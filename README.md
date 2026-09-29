@@ -25,8 +25,8 @@ Student Web/PWA (بدون ورود) ─────HTTPS──► Cloudflare Wor
 |---|---|
 | Worker + D1 (auth، کلاس، دانش‌آموز، فعالیت، توکن، play، گزارش) | ✅ پیاده‌سازی و با تست خودکار روی workerd/D1 واقعی اجرا شده |
 | Scoring / Trend / Recommendation / Adaptive | ✅ تست واحد |
-| Student Web + سه بازی + Offline | 🚧 در حال ساخت |
-| Teacher Android | 🚧 در حال ساخت (بیلد در CI گیت‌هاب) |
+| Student Web + سه بازی + Offline | ✅ پیاده‌سازی و با تست خودکار (19 تست، شامل e2e روی Worker واقعی) |
+| Teacher Android (Compose) | 🚧 کد نوشته شده؛ کامپایل و تست واحد فقط در CI گیت‌هاب اجرا می‌شود. تست روی دستگاه/شبیه‌ساز هنوز انجام نشده |
 | دیپلوی Cloudflare | ⏳ نیازمند اجرای CI/Secrets |
 
 ## اجرای Worker به‌صورت local
@@ -50,3 +50,16 @@ npm test                              # 38 تست
 | `DB` | binding | پایگاه D1 |
 
 جزئیات بیشتر: `docs/`.
+
+## اپ معلم (Android)
+
+Kotlin + Jetpack Compose (Material 3، RTL)، MVVM + Repository، Room برای cache آفلاین، OkHttp + kotlinx.serialization.
+
+```bash
+cd teacher-android
+API_BASE_URL=https://<your-worker>.workers.dev gradle assembleDebug   # آدرس API هرگز داخل کد نیست
+gradle testDebugUnitTest                                              # تست‌های واحد (قرارداد API، اعتبارسنجی، آفلاین، QR)
+```
+
+بدون `API_BASE_URL` آدرس پیش‌فرض `http://10.0.2.2:8787` است (Worker محلی از دید شبیه‌ساز).
+بیلد و تست در CI (job با نام `android`) اجرا می‌شود و APK دیباگ به‌صورت artifact ذخیره می‌شود.
