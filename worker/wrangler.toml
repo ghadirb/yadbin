@@ -1,0 +1,16 @@
+name = "yadbin-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Dev/production separation: real IDs and secrets are NOT committed.
+# Secrets: `wrangler secret put JWT_SECRET`
+[[d1_databases]]
+binding = "DB"
+database_name = "yadbin-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+ENVIRONMENT = "production"
+ALLOWED_ORIGIN = "*"
+PLAY_BASE_URL = "https://yadbin.pages.dev"
