@@ -3,7 +3,7 @@ package com.yadbin.teacher.core.auth
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.security.crypto.MasterKeys
 
 /** Teacher session storage. The JWT is the only credential kept on the device (never the password). */
 interface TokenStore {
@@ -26,9 +26,9 @@ class MemoryTokenStore : TokenStore {
 class EncryptedTokenStore(context: Context) : TokenStore {
     private val fallback = MemoryTokenStore()
     private val prefs: SharedPreferences? = try {
-        val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        val alias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
         EncryptedSharedPreferences.create(
-            context, "yadbin_session", key,
+            "yadbin_session", alias, context,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
