@@ -39,7 +39,7 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('teacher-android/settings.gradle.kts') != '' }}
+    if: ${{ vars.ENABLE_ANDROID_CI == 'true' }}
     permissions:
       contents: write
     steps:
