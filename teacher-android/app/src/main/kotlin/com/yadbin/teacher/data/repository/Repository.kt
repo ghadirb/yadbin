@@ -1,0 +1,68 @@
+package com.yadbin.teacher.data.repository
+
+import com.yadbin.teacher.core.auth.TokenStore
+import com.yadbin.teacher.core.network.NetworkException
+import com.yadbin.teacher.data.local.CacheStore
+import com.yadbin.teacher.data.remote.ApiService
+import com.yadbin.teacher.domain.models.*
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.json.Json
+
+/** [fromCache] = the network was unreachable and the last saved copy is shown. */
+data class Loaded<T>(val data: T, val fromCache: Boolean = false)
+
+class Repository(
+    private val api: ApiService,
+    private val cache: CacheStore,
+    private val tokens: TokenStore,
+    private val json: Json = Json { ignoreUnknownKeys = true },
+) {
+    val isLoggedIn: Boolean get() = tokens.token() != null
+    val teacherName: String? get() = tokens.teacherName()
+
+    suspend fun login(phone: String, password: String) {
+        val r = api.login(phone, password)
+        cache.clear()                      // never show a previous teacher's cached data
+        tokens.save(r.token, r.teacher.name)
+    }
+
+    suspend fun register(name: String, phone: String, password: String) {
+        val r = api.register(name, phone, password)
+        cache.clear()
+        tokens.save(r.token, r.teacher.name)
+    }
+
+    suspend fun logout() {
+        tokens.clear()
+        cache.clear()
+    }
+
+    // ---- reads (network first, cached copy when offline) ------------------------------------
+    suspend fun classes(): Loaded<ClassesResponse> = cached("classes", ClassesResponse.serializer()) { api.classes() }
+    suspend fun classDetail(id: String): Loaded<ClassDetail> = cached("class:$id", ClassDetail.serializer()) { api.classDetail(id) }
+    suspend fun classReport(id: String): Loaded<ClassReport> = cached("classReport:$id", ClassReport.serializer()) { api.classReport(id) }
+    suspend fun studentReport(id: String): Loaded<StudentReport> = cached("student:$id", StudentReport.serializer()) { api.studentReport(id) }
+    suspend fun activity(id: String): Loaded<ActivityDetail> = cached("activity:$id", ActivityDetail.serializer()) { api.activity(id) }
+
+    // ---- writes (always need the network) ---------------------------------------------------
+    suspend fun createClass(name: String, grade: String, school: String?): ClassSummary = api.createClass(name, grade, school).cls
+    suspend fun updateClass(id: String, name: String, grade: String, school: String?): ClassSummary = api.updateClass(id, name, grade, school).cls
+    suspend fun deleteClass(id: String) = api.deleteClass(id)
+    suspend fun addStudents(classId: String, text: String): AddStudentsResponse = api.addStudents(classId, text)
+    suspend fun removeFromClass(classId: String, studentId: String) = api.removeFromClass(classId, studentId)
+    suspend fun deleteStudentData(studentId: String) = api.deleteStudentData(studentId)
+    suspend fun createActivity(classId: String, gameType: String, difficulty: String, questionCount: Int, studentIds: List<String>?): ActivityCreated =
+        api.createActivity(classId, gameType, difficulty, questionCount, studentIds)
+    suspend fun cancelActivity(id: String) = api.cancelActivity(id)
+
+    private suspend fun <T> cached(key: String, serializer: KSerializer<T>, fetch: suspend () -> T): Loaded<T> {
+        try {
+            val fresh = fetch()
+            cache.put(key, json.encodeToString(serializer, fresh))
+            return Loaded(fresh, fromCache = false)
+        } catch (e: NetworkException) {
+            val saved = cache.get(key) ?: throw e
+            return Loaded(json.decodeFromString(serializer, saved), fromCache = true)
+        }
+    }
+}
