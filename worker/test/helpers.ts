@@ -1,8 +1,9 @@
 import { Miniflare } from 'miniflare';
 import { buildSync } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
-const SQL = readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
+const MIGRATIONS_DIR = new URL('../migrations/', import.meta.url);
+const SQL = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8')).join('\n');
 
 export async function createEnv() {
   const out = buildSync({ entryPoints: [new URL('../src/index.ts', import.meta.url).pathname], bundle: true, format: 'esm', write: false, platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'] });
@@ -17,16 +18,19 @@ export async function createEnv() {
   const stmts = SQL.replace(/--.*$/gm, '').split(';').map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
   for (const s of stmts) await db.prepare(s).run();
 
+  // Each helper call comes from a distinct client IP so per-IP limits don't couple unrelated tests.
+  let ipCounter = 0;
+  const nextIp = () => `198.51.${Math.floor(++ipCounter / 250) % 250}.${ipCounter % 250 + 1}`;
   async function api(method: string, path: string, body?: unknown, token?: string) {
     const res = await mf.dispatchFetch(`http://localhost${path}`, {
-      method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      method, headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': nextIp(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
     let data: any = null; try { data = JSON.parse(text); } catch { data = text; }
     return { status: res.status, data };
   }
-  return { mf, db, api, dispose: () => mf.dispose() };
+  return { mf, db, api, raw: (method: string, path: string, headers: Record<string, string> = {}, body?: unknown) => mf.dispatchFetch(`http://localhost${path}`, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), dispose: () => mf.dispose() };
 }
 export type TestEnv = Awaited<ReturnType<typeof createEnv>>;
 

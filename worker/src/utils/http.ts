@@ -9,8 +9,10 @@ export const unauthorized = (msg = 'ابتدا وارد شوید.') => new HttpE
 export const badRequest = (msg: string, extra?: unknown) => new HttpError(400, 'bad_request', msg, extra);
 
 export function corsHeaders(env: Env): Record<string, string> {
+  // Production must set ALLOWED_ORIGIN explicitly; the wildcard fallback is for local dev only.
+  const origin = env.ALLOWED_ORIGIN || (env.ENVIRONMENT === 'production' ? '' : '*');
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
+    ...(origin ? { 'Access-Control-Allow-Origin': origin } : {}),
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',

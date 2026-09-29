@@ -5,6 +5,7 @@ import { recomputeStudentMetrics } from '../services/metrics';
 import { scoreAttention, scoreMemory, scoreProblemSolving, type GameMetrics, type GameType } from '../scoring';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, nowIso, TOKEN_RE } from '../utils/ids';
+import { rateLimit, rateLimitIp } from '../utils/ratelimit';
 import { attentionEventSchema, completeSchema, memoryEventSchema, parse, problemEventSchema } from '../validation/schemas';
 
 const INVALID = () => new HttpError(404, 'invalid_token', 'این لینک معتبر نیست.');
@@ -42,8 +43,10 @@ async function startDifficulty(env: Env, row: PlayRow): Promise<1 | 2 | 3> {
 }
 
 /** Returns only what the game needs. No names, ids of teacher/class/student, or other students' data. */
-export async function getPlay(env: Env, token: string) {
+export async function getPlay(env: Env, token: string, req?: Request) {
+  if (req) await rateLimitIp(env, req, 'play', 120, 60);
   const row = await loadByToken(env, token);
+  await rateLimit(env, `play:token:${token}`, 200, 3600);
   if (row.act_status === 'canceled') throw INACTIVE();
   if (row.ast_status === 'completed') return json({ status: 'completed', message: 'این فعالیت قبلاً انجام شده است.' });
   if (row.expires_at && row.expires_at < nowIso()) throw EXPIRED();
@@ -96,7 +99,9 @@ function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: D
 
 /** Idempotent: one valid result per session. A repeated submission returns the stored outcome without creating a duplicate. */
 export async function completePlay(req: Request, env: Env, token: string) {
+  await rateLimitIp(env, req, 'play', 120, 60);
   const row = await loadByToken(env, token);
+  await rateLimit(env, `complete:token:${token}`, 60, 3600);
   if (row.act_status === 'canceled') throw INACTIVE();
   const body = parse(completeSchema, await readJson(req));
 

@@ -1,0 +1,92 @@
+name: Deploy (Cloudflare)
+
+# Manual only. Required repository secrets:
+#   CLOUDFLARE_API_TOKEN  (Workers Scripts:Edit, D1:Edit, Pages:Edit, Account Settings:Read)
+#   JWT_SECRET            (>= 32 random characters)
+# Optional secret: CLOUDFLARE_ACCOUNT_ID (auto-detected when the token sees exactly one account)
+on:
+  workflow_dispatch:
+    inputs:
+      pages_project:
+        description: Cloudflare Pages project name for the Student Web
+        default: yadbin
+      migrate:
+        description: Apply D1 migrations
+        type: boolean
+        default: true
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Preflight
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
+          test "${#JWT}" -ge 32 || { echo "::error::JWT_SECRET secret must be at least 32 characters"; exit 1; }
+        env: { JWT: "${{ secrets.JWT_SECRET }}" }
+
+      - name: Resolve account id
+        run: |
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            RES=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts)
+            N=$(echo "$RES" | jq '.result | length')
+            [ "$N" = "1" ] || { echo "::error::Token sees $N accounts; set CLOUDFLARE_ACCOUNT_ID secret"; exit 1; }
+            echo "CLOUDFLARE_ACCOUNT_ID=$(echo "$RES" | jq -r '.result[0].id')" >> "$GITHUB_ENV"
+          fi
+
+      - run: npm ci
+        working-directory: worker
+
+      - name: Ensure D1 database
+        working-directory: worker
+        run: |
+          ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="yadbin-db") | .uuid' | head -n1)
+          if [ -z "$ID" ]; then
+            npx wrangler d1 create yadbin-db
+            ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="yadbin-db") | .uuid' | head -n1)
+          fi
+          test -n "$ID"
+          sed -i "s/REPLACE_WITH_D1_DATABASE_ID/$ID/" wrangler.toml
+
+      - name: Apply migrations
+        if: ${{ inputs.migrate }}
+        working-directory: worker
+        run: npm run db:migrate:remote
+
+      - name: Deploy Worker
+        working-directory: worker
+        run: |
+          npx wrangler deploy 2>&1 | tee /tmp/deploy.log
+          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -n1)
+          test -n "$URL" || { echo "::error::could not detect Worker URL"; exit 1; }
+          echo "WORKER_URL=$URL" >> "$GITHUB_ENV"
+          printf '%s' "$JWT" | npx wrangler secret put JWT_SECRET
+        env: { JWT: "${{ secrets.JWT_SECRET }}" }
+
+      - name: Build Student Web
+        working-directory: student-web
+        run: |
+          npm ci
+          npm run build
+        env: { VITE_API_BASE: "${{ env.WORKER_URL }}" }
+
+      - name: Deploy Student Web (Pages)
+        working-directory: student-web
+        run: |
+          npx wrangler pages project create "${{ inputs.pages_project }}" --production-branch main || true
+          npx wrangler pages deploy dist --project-name "${{ inputs.pages_project }}" --branch main
+
+      - name: Summary
+        run: |
+          echo "Worker: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Student Web: https://${{ inputs.pages_project }}.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "Remember: PLAY_BASE_URL and ALLOWED_ORIGIN in worker/wrangler.toml must match the Pages URL." >> "$GITHUB_STEP_SUMMARY"

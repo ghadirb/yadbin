@@ -3,6 +3,8 @@ import { signJwt } from '../auth/jwt';
 import type { Env } from '../env';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
+import { clearRateLimit, rateLimit, rateLimitIp } from '../utils/ratelimit';
+import { requireSecret } from '../auth/middleware';
 import { loginSchema, parse, registerSchema } from '../validation/schemas';
 
 const teacherDto = (t: any) => ({ id: t.id, name: t.name, phone: t.phone });
@@ -10,6 +12,8 @@ const teacherDto = (t: any) => ({ id: t.id, name: t.name, phone: t.phone });
 const DUMMY_HASH = 'pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 export async function register(req: Request, env: Env) {
+  requireSecret(env);
+  await rateLimitIp(env, req, 'register', 10, 3600);
   const { name, phone, password } = parse(registerSchema, await readJson(req));
   const exists = await env.DB.prepare('SELECT id FROM teachers WHERE phone = ?').bind(phone).first();
   if (exists) throw new HttpError(409, 'phone_taken', 'این شماره موبایل قبلاً ثبت‌نام کرده است.');
@@ -20,9 +24,15 @@ export async function register(req: Request, env: Env) {
 }
 
 export async function login(req: Request, env: Env) {
+  requireSecret(env);
+  await rateLimitIp(env, req, 'login', 30, 600);
   const { phone, password } = parse(loginSchema, await readJson(req));
+  // Per-account brute-force guard (independent of IP): 8 attempts / 10 min.
+  const phoneKey = `login:phone:${phone}`;
+  await rateLimit(env, phoneKey, 8, 600);
   const t = await env.DB.prepare('SELECT * FROM teachers WHERE phone = ?').bind(phone).first<any>();
   const ok = await verifyPassword(password, t?.password_hash ?? DUMMY_HASH);
   if (!t || !ok) throw new HttpError(401, 'invalid_credentials', 'شماره موبایل یا رمز عبور اشتباه است.');
+  await clearRateLimit(env, phoneKey);
   return json({ token: await signJwt(t.id, env.JWT_SECRET), teacher: teacherDto(t) });
 }

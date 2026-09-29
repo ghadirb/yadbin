@@ -12,5 +12,6 @@ migrations_dir = "migrations"
 
 [vars]
 ENVIRONMENT = "production"
-ALLOWED_ORIGIN = "*"
+# Set to the exact origin of the deployed Student Web (same as PLAY_BASE_URL).
+ALLOWED_ORIGIN = "https://yadbin.pages.dev"
 PLAY_BASE_URL = "https://yadbin.pages.dev"

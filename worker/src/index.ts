@@ -35,7 +35,7 @@ add('POST', '/api/activities', true, (req, env, _p, t) => activities.createActiv
 add('GET', '/api/activities/:id', true, (_r, env, p, t) => activities.getActivity(env, t, p.id));
 add('POST', '/api/activities/:id/cancel', true, (_r, env, p, t) => activities.cancelActivity(env, t, p.id));
 
-add('GET', '/api/play/:token', false, (_r, env, p) => play.getPlay(env, p.token));
+add('GET', '/api/play/:token', false, (req, env, p) => play.getPlay(env, p.token, req));
 add('POST', '/api/play/:token/complete', false, (req, env, p) => play.completePlay(req, env, p.token));
 
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
@@ -70,15 +70,28 @@ export default {
       if (pathMatched) throw new HttpError(405, 'method_not_allowed', 'روش درخواست مجاز نیست.');
       throw new HttpError(404, 'not_found', 'یافت نشد.');
     } catch (e) {
-      if (e instanceof HttpError) return withCors(json({ error: e.code, message: e.message, details: e.extra }, e.status), cors);
+      if (e instanceof HttpError) {
+        const retry = e.status === 429 ? (e.extra as { retryAfter?: number } | undefined)?.retryAfter : undefined;
+        const body = e.status === 429 ? undefined : e.extra;
+        return withCors(json({ error: e.code, message: e.message, details: body }, e.status, retry ? { 'Retry-After': String(retry) } : {}), cors);
+      }
       console.error('unhandled', e instanceof Error ? e.stack : e);
       return withCors(json({ error: 'internal_error', message: 'خطای داخلی سرور.' }, 500), cors);
     }
   },
 } satisfies ExportedHandler<Env>;
 
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'Cross-Origin-Resource-Policy': 'cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
 function withCors(res: Response, cors: Record<string, string>): Response {
   const h = new Headers(res.headers);
-  for (const [k, v] of Object.entries(cors)) h.set(k, v);
+  for (const [k, v] of Object.entries({ ...SECURITY_HEADERS, ...cors })) h.set(k, v);
   return new Response(res.body, { status: res.status, headers: h });
 }

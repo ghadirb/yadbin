@@ -27,7 +27,8 @@ Student Web/PWA (بدون ورود) ─────HTTPS──► Cloudflare Wor
 | Scoring / Trend / Recommendation / Adaptive | ✅ تست واحد |
 | Student Web + سه بازی + Offline | ✅ پیاده‌سازی و با تست خودکار (19 تست، شامل e2e روی Worker واقعی) |
 | Teacher Android (Compose) | 🚧 کد نوشته شده؛ کامپایل و تست واحد فقط در CI گیت‌هاب اجرا می‌شود. تست روی دستگاه/شبیه‌ساز هنوز انجام نشده |
-| دیپلوی Cloudflare | ⏳ نیازمند اجرای CI/Secrets |
+| امنیت (rate limit، header، CORS، fail-closed secret) | ✅ پیاده‌سازی و تست خودکار |
+| دیپلوی Cloudflare | ⏳ workflow آماده است (`deploy.yml`)؛ نیازمند Secrets و اجرای دستی |
 
 ## اجرای Worker به‌صورت local
 
@@ -37,7 +38,7 @@ npm install
 cp .dev.vars.example .dev.vars        # JWT_SECRET را عوض کنید
 npm run db:migrate:local
 npm run dev                           # http://localhost:8787
-npm test                              # 38 تست
+npm test                              # 44 تست
 ```
 
 ## متغیرهای محیطی (Worker)
