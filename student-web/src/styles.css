@@ -1,0 +1,37 @@
+:root { --bg:#f5f3ff; --fg:#1e1b4b; --card:#ffffff; --brand:#4f46e5; --brand-fg:#ffffff; --ok:#15803d; --retry:#b45309; --line:#c7d2fe; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111027; --fg:#eef2ff; --card:#1c1a3d; --brand:#818cf8; --brand-fg:#0b0a1f; --ok:#4ade80; --retry:#fbbf24; --line:#3730a3; } }
+* { box-sizing: border-box; }
+html, body { margin:0; min-height:100%; background:var(--bg); color:var(--fg); }
+body { font-family: "Vazirmatn", "IRANSans", Tahoma, system-ui, sans-serif; font-size:20px; line-height:1.8; -webkit-tap-highlight-color: transparent; }
+#app { max-width: 560px; margin: 0 auto; padding: 16px; padding-bottom: env(safe-area-inset-bottom, 16px); }
+.card { background:var(--card); border-radius:24px; padding:28px 20px; box-shadow:0 4px 18px rgba(79,70,229,.12); margin-top:24px; }
+.center { text-align:center; }
+h1 { font-size:2rem; margin:.2em 0 .5em; } h2 { font-size:1.5rem; margin:.2em 0 .5em; }
+.btn { min-height:60px; min-width:60px; padding:12px 28px; font:inherit; font-weight:700; border-radius:18px; border:3px solid var(--brand); background:transparent; color:var(--brand); cursor:pointer; margin-top:16px; }
+.btn.primary { background:var(--brand); color:var(--brand-fg); }
+.btn:focus-visible, .choice:focus-visible, .cell:focus-visible, .option:focus-visible { outline:4px solid #f59e0b; outline-offset:3px; }
+.btn:disabled { opacity:.5; }
+.stage { display:flex; flex-direction:column; align-items:center; gap:14px; margin-top:16px; position:relative; }
+.prompt { font-size:1.4rem; text-align:center; margin:8px 0; } .prompt.big { font-size:2rem; }
+.rule { font-size:1.35rem; font-weight:700; text-align:center; background:var(--card); border:3px dashed var(--line); border-radius:16px; padding:10px 16px; }
+.question { font-size:1.7rem; font-weight:700; text-align:center; background:var(--card); border-radius:20px; padding:20px; width:100%; direction:rtl; }
+.big-symbol { font-size:7rem; min-height:9rem; line-height:9rem; }
+.choices, .options { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; width:100%; }
+.options { grid-template-columns:1fr; }
+.choice { position:relative; font-size:3rem; min-height:84px; border-radius:20px; border:3px solid var(--line); background:var(--card); cursor:pointer; }
+.choice.picked { border-color:var(--brand); background:#e0e7ff; } @media (prefers-color-scheme: dark) { .choice.picked { background:#312e81; } }
+.order { position:absolute; top:4px; inset-inline-start:8px; font-size:1.1rem; font-weight:800; color:var(--brand); }
+.option { font:inherit; font-size:1.8rem; min-height:72px; border-radius:20px; border:3px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+.option.right { border-color:var(--ok); } .option.wrong { border-color:var(--retry); opacity:.6; }
+.grid { display:grid; grid-template-columns:repeat(var(--n),1fr); gap:10px; width:100%; }
+.cell { aspect-ratio:1; font-size:2.4rem; border-radius:18px; border:4px solid transparent; cursor:pointer; color:#fff; font-weight:800; text-shadow:0 1px 2px rgba(0,0,0,.4); }
+.cell.picked { border-color:var(--fg); box-shadow:0 0 0 4px var(--brand) inset; transform:scale(.94); }
+.c-red { background:#dc2626; } .c-blue { background:#1d4ed8; } .c-green { background:#15803d; } .c-yellow { background:#ca8a04; }
+.progress { display:flex; gap:6px; justify-content:center; margin-top:8px; flex-wrap:wrap; }
+.dot { width:14px; height:14px; border-radius:50%; background:var(--line); } .dot.done { background:var(--brand); } .dot.now { outline:3px solid var(--brand); }
+.tut-badge { text-align:center; font-weight:700; color:var(--brand); }
+.feedback { position:absolute; inset-inline:0; top:30%; margin:auto; width:fit-content; padding:14px 28px; border-radius:20px; font-size:1.8rem; font-weight:800; background:var(--card); border:4px solid; box-shadow:0 6px 24px rgba(0,0,0,.2); }
+.feedback.ok { color:var(--ok); border-color:var(--ok); } .feedback.retry { color:var(--retry); border-color:var(--retry); }
+.hints { width:100%; } .hint { background:var(--card); border-radius:14px; padding:10px 14px; border-inline-start:6px solid var(--brand); margin:8px 0; }
+.banner { background:#fef3c7; color:#78350f; text-align:center; padding:10px; font-weight:700; }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
