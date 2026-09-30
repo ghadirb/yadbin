@@ -26,10 +26,19 @@ class Repository(
         tokens.save(r.token, r.teacher.name)
     }
 
-    suspend fun register(name: String, phone: String, password: String) {
+    /** Returns the one-time recovery code (shown to the teacher; needed for "forgot password"). */
+    suspend fun register(name: String, phone: String, password: String): String? {
         val r = api.register(name, phone, password)
         cache.clear()
         tokens.save(r.token, r.teacher.name)
+        return r.recoveryCode
+    }
+
+    suspend fun resetPassword(phone: String, recoveryCode: String, newPassword: String): String? {
+        val r = api.resetPassword(phone, recoveryCode, newPassword)
+        cache.clear()
+        tokens.save(r.token, r.teacher.name)
+        return r.recoveryCode
     }
 
     suspend fun logout() {

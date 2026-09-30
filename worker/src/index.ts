@@ -18,6 +18,7 @@ function add(method: string, path: string, teacher: boolean, handler: Route['han
 
 add('POST', '/api/auth/register', false, (req, env) => auth.register(req, env));
 add('POST', '/api/auth/login', false, (req, env) => auth.login(req, env));
+add('POST', '/api/auth/reset-password', false, (req, env) => auth.resetPassword(req, env));
 
 add('GET', '/api/classes', true, (_r, env, _p, t) => classes.listClasses(env, t));
 add('POST', '/api/classes', true, (req, env, _p, t) => classes.createClass(req, env, t));

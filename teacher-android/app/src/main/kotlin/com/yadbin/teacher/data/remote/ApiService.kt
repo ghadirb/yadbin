@@ -16,6 +16,9 @@ class ApiService(private val c: ApiClient) {
     suspend fun login(phone: String, password: String): AuthResponse =
         c.request("POST", "/api/auth/login", AuthResponse.serializer(), j.encodeToString(LoginRequest.serializer(), LoginRequest(phone, password)))
 
+    suspend fun resetPassword(phone: String, recoveryCode: String, newPassword: String): AuthResponse =
+        c.request("POST", "/api/auth/reset-password", AuthResponse.serializer(), j.encodeToString(ResetPasswordRequest.serializer(), ResetPasswordRequest(phone, recoveryCode, newPassword)))
+
     suspend fun classes(): ClassesResponse = c.request("GET", "/api/classes", ClassesResponse.serializer())
 
     suspend fun createClass(name: String, grade: String, school: String?): ClassEnvelope =

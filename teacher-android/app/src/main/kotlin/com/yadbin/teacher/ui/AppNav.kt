@@ -12,6 +12,7 @@ import com.yadbin.teacher.ui.activities.ActivityScreen
 import com.yadbin.teacher.ui.activities.CreateActivityScreen
 import com.yadbin.teacher.ui.auth.LoginScreen
 import com.yadbin.teacher.ui.auth.RegisterScreen
+import com.yadbin.teacher.ui.auth.ResetPasswordScreen
 import com.yadbin.teacher.ui.auth.SplashScreen
 import com.yadbin.teacher.ui.classes.ClassDetailScreen
 import com.yadbin.teacher.ui.classes.CreateClassScreen
@@ -23,6 +24,7 @@ object Routes {
     const val SPLASH = "splash"
     const val LOGIN = "login"
     const val REGISTER = "register"
+    const val RESET = "resetPassword"
     const val DASHBOARD = "dashboard"
     const val CREATE_CLASS = "createClass"
     const val CLASS = "class/{id}"
@@ -54,6 +56,13 @@ fun AppNav() {
             LoginScreen(
                 onLoggedIn = { nav.navigate(Routes.DASHBOARD) { popUpTo(0) { inclusive = true } } },
                 onRegister = { nav.navigate(Routes.REGISTER) },
+                onForgot = { nav.navigate(Routes.RESET) },
+            )
+        }
+        composable(Routes.RESET) {
+            ResetPasswordScreen(
+                onDone = { nav.navigate(Routes.DASHBOARD) { popUpTo(0) { inclusive = true } } },
+                onBack = { nav.popBackStack() },
             )
         }
         composable(Routes.REGISTER) {

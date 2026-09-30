@@ -10,7 +10,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -30,7 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class AuthState(val loading: Boolean = false, val error: String? = null)
+data class AuthState(val loading: Boolean = false, val error: String? = null, val recoveryCode: String? = null)
 
 class AuthViewModel(private val repo: Repository) : ViewModel() {
     private val _state = MutableStateFlow(AuthState())
@@ -39,7 +42,7 @@ class AuthViewModel(private val repo: Repository) : ViewModel() {
     fun login(phone: String, password: String, onDone: () -> Unit) {
         val p = Validators.normalizePhone(phone) ?: return fail("شماره موبایل معتبر نیست (مثال: 09123456789).")
         if (password.isEmpty()) return fail("رمز عبور را وارد کنید.")
-        submit(onDone) { repo.login(p, password) }
+        submit(onDone) { repo.login(p, password); null }
     }
 
     fun register(name: String, phone: String, password: String, repeat: String, onDone: () -> Unit) {
@@ -50,15 +53,35 @@ class AuthViewModel(private val repo: Repository) : ViewModel() {
         submit(onDone) { repo.register(name.trim(), p, password) }
     }
 
+    fun resetPassword(phone: String, code: String, password: String, repeat: String, onDone: () -> Unit) {
+        val p = Validators.normalizePhone(phone) ?: return fail("شماره موبایل معتبر نیست (مثال: 09123456789).")
+        if (code.isBlank()) return fail("کد بازیابی را وارد کنید.")
+        Validators.passwordError(password)?.let { return fail(it) }
+        if (password != repeat) return fail("رمز عبور و تکرار آن یکسان نیست.")
+        submit(onDone) { repo.resetPassword(p, code.trim(), password) }
+    }
+
     private fun fail(message: String) { _state.value = AuthState(error = message) }
 
-    private fun submit(onDone: () -> Unit, block: suspend () -> Unit) {
+    /** Called after the teacher confirmed they saved the recovery code. */
+    private var pendingDone: (() -> Unit)? = null
+    fun recoveryCodeSaved() {
+        _state.value = AuthState()
+        pendingDone?.invoke(); pendingDone = null
+    }
+
+    private fun submit(onDone: () -> Unit, block: suspend () -> String?) {
         viewModelScope.launch {
             _state.value = AuthState(loading = true)
             try {
-                block()
-                _state.value = AuthState()
-                onDone()
+                val code = block()
+                if (code != null) {                 // show the recovery code first, continue afterwards
+                    pendingDone = onDone
+                    _state.value = AuthState(recoveryCode = code)
+                } else {
+                    _state.value = AuthState()
+                    onDone()
+                }
             } catch (e: ApiException) {
                 _state.value = AuthState(error = errorText(e))
             } catch (e: NetworkException) {
@@ -100,8 +123,39 @@ private fun AuthColumn(title: String, content: @Composable ColumnScope.() -> Uni
     }
 }
 
+/** Password field with a show/hide toggle (text button: no extra icon dependency). */
 @Composable
-fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
+private fun PasswordField(value: String, onChange: (String) -> Unit, label: String, imeKeyboardType: KeyboardType = KeyboardType.Password) {
+    var visible by rememberSaveable { mutableStateOf(false) }
+    OutlinedTextField(
+        value, onChange, label = { Text(label) }, singleLine = true,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = imeKeyboardType),
+        trailingIcon = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "پنهان" else "نمایش") } },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun RecoveryCodeDialog(code: String, onConfirm: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("کد بازیابی رمز") },
+        text = {
+            Column {
+                Text("اگر رمز عبور را فراموش کردید، فقط با این کد می‌توانید رمز جدید بگذارید. آن را در جای امن ذخیره کنید؛ این کد دوباره نمایش داده نمی‌شود.")
+                Spacer(Modifier.height(12.dp))
+                Text(code, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("کپی کد") }
+            }
+        },
+        confirmButton = { Button(onClick = onConfirm) { Text("ذخیره کردم") } },
+    )
+}
+
+@Composable
+fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit, onForgot: () -> Unit) {
     val c = LocalContainer.current
     val vm: AuthViewModel = viewModel(factory = VmFactory { AuthViewModel(c.repository) })
     val s by vm.state.collectAsStateWithLifecycle()
@@ -117,15 +171,14 @@ fun LoginScreen(onLoggedIn: () -> Unit, onRegister: () -> Unit) {
         OutlinedTextField(phone, { phone = it }, label = { Text("شماره موبایل") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("رمز عبور") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+        PasswordField(password, { password = it }, "رمز عبور")
         s.error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { vm.login(phone, password) { c.sessionExpired.value = false; onLoggedIn() } },
             enabled = !s.loading, modifier = Modifier.fillMaxWidth(),
         ) { if (s.loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("ورود") }
+        TextButton(onClick = onForgot) { Text("رمز عبور را فراموش کرده‌ام") }
         TextButton(onClick = onRegister) { Text("ثبت‌نام") }
     }
 }
@@ -146,11 +199,10 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
         OutlinedTextField(phone, { phone = it }, label = { Text("شماره موبایل") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("رمز عبور") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        PasswordField(password, { password = it }, "رمز عبور")
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(repeat, { repeat = it }, label = { Text("تکرار رمز عبور") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        PasswordField(repeat, { repeat = it }, "تکرار رمز عبور")
+        s.recoveryCode?.let { RecoveryCodeDialog(it) { vm.recoveryCodeSaved() } }
         s.error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(16.dp))
         Button(
@@ -158,5 +210,37 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
             enabled = !s.loading, modifier = Modifier.fillMaxWidth(),
         ) { if (s.loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("ثبت‌نام") }
         TextButton(onClick = onBackToLogin) { Text("حساب دارید؟ ورود") }
+    }
+}
+
+@Composable
+fun ResetPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
+    val c = LocalContainer.current
+    val vm: AuthViewModel = viewModel(factory = VmFactory { AuthViewModel(c.repository) })
+    val s by vm.state.collectAsStateWithLifecycle()
+    var phone by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var repeat by rememberSaveable { mutableStateOf("") }
+
+    AuthColumn("بازیابی رمز عبور") {
+        Text("شماره موبایل و «کد بازیابی» که هنگام ثبت‌نام دریافت کردید را وارد کنید.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(phone, { phone = it }, label = { Text("شماره موبایل") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(code, { code = it }, label = { Text("کد بازیابی (مثال: ABCD-EFGH-JKMN)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(12.dp))
+        PasswordField(password, { password = it }, "رمز عبور جدید")
+        Spacer(Modifier.height(12.dp))
+        PasswordField(repeat, { repeat = it }, "تکرار رمز عبور جدید")
+        s.recoveryCode?.let { RecoveryCodeDialog(it) { vm.recoveryCodeSaved() } }
+        s.error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { vm.resetPassword(phone, code, password, repeat) { c.sessionExpired.value = false; onDone() } },
+            enabled = !s.loading, modifier = Modifier.fillMaxWidth(),
+        ) { if (s.loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("تعیین رمز جدید") }
+        TextButton(onClick = onBack) { Text("بازگشت به ورود") }
     }
 }

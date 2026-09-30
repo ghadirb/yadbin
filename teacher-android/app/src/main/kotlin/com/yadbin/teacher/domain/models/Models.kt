@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonElement
 // ---- Requests -------------------------------------------------------------------------------
 @Serializable data class LoginRequest(val phone: String, val password: String)
 @Serializable data class RegisterRequest(val name: String, val phone: String, val password: String)
+@Serializable data class ResetPasswordRequest(val phone: String, val recoveryCode: String, val newPassword: String)
 @Serializable data class ClassRequest(val name: String, val grade: String, val schoolName: String? = null)
 @Serializable data class AddStudentsRequest(val text: String)
 @Serializable data class ActivityRequest(
@@ -20,7 +21,8 @@ import kotlinx.serialization.json.JsonElement
 
 // ---- Auth -----------------------------------------------------------------------------------
 @Serializable data class Teacher(val id: String, val name: String, val phone: String)
-@Serializable data class AuthResponse(val token: String, val teacher: Teacher)
+/** [recoveryCode] is present on register / reset-password only; it is shown to the teacher once. */
+@Serializable data class AuthResponse(val token: String, val teacher: Teacher, val recoveryCode: String? = null)
 
 // ---- Classes / students ---------------------------------------------------------------------
 @Serializable data class ClassSummary(

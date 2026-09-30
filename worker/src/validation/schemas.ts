@@ -23,6 +23,11 @@ const phone = z.string({ error: 'شماره موبایل الزامی است.' }
 const password = z.string({ error: 'رمز عبور الزامی است.' }).min(8, 'رمز عبور باید حداقل ۸ کاراکتر باشد.').max(128, 'رمز عبور خیلی بلند است.');
 
 export const registerSchema = z.object({ name: name('نام'), phone, password });
+export const resetPasswordSchema = z.object({
+  phone,
+  recoveryCode: z.string({ error: 'کد بازیابی الزامی است.' }).trim().min(8, 'کد بازیابی معتبر نیست.').max(40, 'کد بازیابی معتبر نیست.'),
+  newPassword: password,
+});
 export const loginSchema = z.object({ phone, password: z.string().min(1, 'رمز عبور الزامی است.') });
 export const classSchema = z.object({
   name: name('نام کلاس'), grade: name('پایه', 40),

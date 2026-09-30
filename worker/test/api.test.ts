@@ -102,6 +102,29 @@ describe('Activities & tokens', () => {
   });
 });
 
+describe('Password recovery', () => {
+  it('registers with a recovery code, resets the password with it, and rotates the code', async () => {
+    const reg = await t.api('POST', '/api/auth/register', { name: 'معلم', phone: '09125550101', password: 'oldpass123' });
+    expect(reg.status).toBe(201);
+    expect(reg.data.recoveryCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const bad = await t.api('POST', '/api/auth/reset-password', { phone: '09125550101', recoveryCode: 'AAAA-BBBB-CCCC', newPassword: 'newpass123' });
+    expect(bad.status).toBe(401);
+    const ok = await t.api('POST', '/api/auth/reset-password', { phone: '09125550101', recoveryCode: reg.data.recoveryCode.toLowerCase().replace(/-/g, ' '), newPassword: 'newpass123' });
+    expect(ok.status).toBe(200);
+    expect(ok.data.recoveryCode).not.toBe(reg.data.recoveryCode);
+    expect((await t.api('POST', '/api/auth/login', { phone: '09125550101', password: 'oldpass123' })).status).toBe(401);
+    expect((await t.api('POST', '/api/auth/login', { phone: '09125550101', password: 'newpass123' })).status).toBe(200);
+    // the used code no longer works
+    expect((await t.api('POST', '/api/auth/reset-password', { phone: '09125550101', recoveryCode: reg.data.recoveryCode, newPassword: 'another123' })).status).toBe(401);
+  });
+  it('does not reveal unknown phones and rejects accounts without a recovery code', async () => {
+    const unknown = await t.api('POST', '/api/auth/reset-password', { phone: '09990001111', recoveryCode: 'AAAA-BBBB-CCCC', newPassword: 'newpass123' });
+    expect(unknown.status).toBe(401);
+    await t.db.prepare("UPDATE teachers SET recovery_hash = NULL WHERE phone = '09125550101'").run();
+    expect((await t.api('POST', '/api/auth/reset-password', { phone: '09125550101', recoveryCode: 'AAAA-BBBB-CCCC', newPassword: 'newpass123' })).status).toBe(401);
+  });
+});
+
 describe('Authorization', () => {
   it('teacher A cannot access teacher B data', async () => {
     const A = await registerTeacher(t, 'معلم الف'), B = await registerTeacher(t, 'معلم ب');

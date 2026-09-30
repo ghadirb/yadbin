@@ -1,0 +1,59 @@
+name: Issue recovery code (for accounts registered before recovery codes existed)
+
+# Manual only. Use when a teacher cannot log in and has no recovery code:
+#   1) run this workflow with the teacher's phone number
+#   2) read the code in the run summary (private repo: only repo members can see it)
+#   3) in the app: Login -> "رمز عبور را فراموش کرده‌ام" -> phone + this code + new password
+# The code is single-use; the app shows a fresh one after the reset.
+on:
+  workflow_dispatch:
+    inputs:
+      phone:
+        description: Teacher phone (09xxxxxxxxx)
+        required: true
+        type: string
+
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PHONE: ${{ inputs.phone }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Validate phone
+        run: echo "$PHONE" | grep -Eq '^09[0-9]{9}$' || { echo "::error::phone must look like 09123456789"; exit 1; }
+
+      - name: Resolve account id
+        run: |
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            RES=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts)
+            echo "CLOUDFLARE_ACCOUNT_ID=$(echo "$RES" | jq -r '.result[0].id')" >> "$GITHUB_ENV"
+          fi
+
+      - run: npm ci
+        working-directory: worker
+
+      - name: Generate code and store its hash
+        working-directory: worker
+        run: |
+          ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="yadbin-db") | .uuid' | head -n1)
+          test -n "$ID"
+          sed -i "s/REPLACE_WITH_D1_DATABASE_ID/$ID/" wrangler.toml
+          # Same format as worker/src/auth/password.ts: pbkdf2$100000$<salt b64>$<hash b64>, code normalized to A-Z0-9.
+          read -r CODE HASH < <(node -e '
+            const c = require("node:crypto");
+            const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+            const raw = Array.from(c.randomBytes(12), (b) => A[b % A.length]).join("");
+            const salt = c.randomBytes(16);
+            const h = c.pbkdf2Sync(raw, salt, 100000, 32, "sha256");
+            console.log(raw.slice(0,4)+"-"+raw.slice(4,8)+"-"+raw.slice(8,12), "pbkdf2$100000$"+salt.toString("base64")+"$"+h.toString("base64"));
+          ')
+          OUT=$(npx wrangler d1 execute yadbin-db --remote --json --command "UPDATE teachers SET recovery_hash='$HASH' WHERE phone='$PHONE'")
+          CH=$(echo "$OUT" | jq '[.[].meta.changes] | add')
+          [ "$CH" = "1" ] || { echo "::error::no teacher with this phone (changes=$CH)"; exit 1; }
+          { echo "### Recovery code for $PHONE"; echo; echo "\`$CODE\`"; echo; echo "Use it once in the app: Login -> forgot password."; } >> "$GITHUB_STEP_SUMMARY"
