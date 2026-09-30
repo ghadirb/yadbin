@@ -23,12 +23,14 @@ Student Web/PWA (بدون ورود) ─────HTTPS──► Cloudflare Wor
 
 | بخش | وضعیت |
 |---|---|
-| Worker + D1 (auth، کلاس، دانش‌آموز، فعالیت، توکن، play، گزارش) | ✅ پیاده‌سازی و با تست خودکار روی workerd/D1 واقعی اجرا شده |
+| Worker + D1 (auth، کلاس، دانش‌آموز، فعالیت، توکن، play، گزارش) | ✅ ۴۴ تست خودکار روی workerd + D1 واقعی |
 | Scoring / Trend / Recommendation / Adaptive | ✅ تست واحد |
-| Student Web + سه بازی + Offline | ✅ پیاده‌سازی و با تست خودکار (19 تست، شامل e2e روی Worker واقعی) |
-| Teacher Android (Compose) | 🚧 کد نوشته شده؛ کامپایل و تست واحد فقط در CI گیت‌هاب اجرا می‌شود. تست روی دستگاه/شبیه‌ساز هنوز انجام نشده |
-| امنیت (rate limit، header، CORS، fail-closed secret) | ✅ پیاده‌سازی و تست خودکار |
-| دیپلوی Cloudflare | ⏳ workflow آماده است (`deploy.yml`)؛ نیازمند Secrets و اجرای دستی |
+| Student Web (سه بازی، Resume، Offline، Sync) | ✅ ۲۴ تست + **۷ تست در Chromium واقعی** (`e2e/`، اجرا در CI) |
+| سناریوی پذیرش بند ۴۴ | ✅ سمت سرور (Node) و سمت مرورگر (Playwright)؛ شامل قطع اینترنت وسط بازی و ارسال تکراری |
+| Teacher Android (Compose) | ✅ کامپایل و ۴ فایل تست واحد در CI سبز؛ APK دیباگ ساخته می‌شود. ⚠️ **روی دستگاه/شبیه‌ساز اجرا و تست رابط کاربری نشده** (نیازمند امتحان دستی شما) |
+| امنیت (rate limit، header، CORS، قفل ورود، fail-closed secret) | ✅ تست خودکار |
+| دیپلوی Cloudflare | ✅ workflow دستی `deploy.yml` (Worker + Student Web از یک آدرس workers.dev) |
+| AI / Leaderboard / رتبه‌بندی | ⛔ عمداً ساخته نشده (طبق سند) |
 
 ## اجرای Worker به‌صورت local
 
