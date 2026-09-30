@@ -23,3 +23,7 @@ Secrets لازم در ریپو: `CLOUDFLARE_API_TOKEN` (دسترسی Workers Scr
 - Headerهای امنیتی روی API (`nosniff`، `DENY`، `no-referrer`، HSTS، CSP) و روی Student Web (فایل `student-web/public/_headers`).
 - CORS در production بدون `ALLOWED_ORIGIN` هرگز `*` نمی‌فرستد.
 - `JWT_SECRET` کوتاه‌تر از ۳۲ کاراکتر یا خالی ⇒ سرور خطای پیکربندی می‌دهد (fail closed).
+
+## بارگذاری سریع در شبکه‌های کند/فیلترشده
+
+بعد از `vite build` اسکریپت `student-web/scripts/inline.mjs` همهٔ JS و CSS را داخل `index.html` قرار می‌دهد، تا شروع بازی فقط به **یک درخواست** برای صفحه نیاز داشته باشد. CSP با hash دقیق همان اسکریپت‌ها به‌روز می‌شود، بنابراین `script-src` همچنان سخت‌گیر می‌ماند.
