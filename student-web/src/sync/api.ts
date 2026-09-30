@@ -8,14 +8,17 @@ export interface PlayApi {
   complete(token: string, payload: unknown): Promise<ApiResult<any>>;
 }
 
-export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(...a)): PlayApi {
+export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(...a), timeoutMs = 15000): PlayApi {
   async function call(method: string, path: string, body?: unknown): Promise<ApiResult<any>> {
+    // Filtered/slow networks often hang instead of failing: abort so the UI can offer a retry.
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => ctl?.abort(), timeoutMs);
     let res: Response;
-    try {
-      res = await fetchImpl(`${base}${path}`, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-    } catch { return { kind: 'network' }; }
     let data: any = null;
-    try { data = await res.json(); } catch { /* non-JSON */ }
+    try {
+      res = await fetchImpl(`${base}${path}`, { method, signal: ctl?.signal, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+      try { data = await res.json(); } catch { /* non-JSON */ }
+    } catch { return { kind: 'network' }; } finally { clearTimeout(timer); }
     if (res.ok) return { kind: 'ok', data };
     return { kind: 'http', status: res.status, error: data?.error ?? 'error', message: data?.message ?? 'خطا' };
   }

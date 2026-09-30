@@ -51,6 +51,9 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
     await store.del(stateKey(token));
     ui.end('already');
     return 'already_done';
+  } else if (!r.data?.session) {
+    ui.error('generic', 'مشکلی پیش آمد. صفحه را دوباره باز کنید.'); // e.g. API base misconfigured → HTML instead of JSON
+    return 'error';
   } else {
     const data = r.data as PlayPayload;
     if (!local || local.sessionId !== data.session.id) { local = fresh(data, now()); await store.set(stateKey(token), local); }

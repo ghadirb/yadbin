@@ -42,11 +42,14 @@ export class IdbKv implements KvStore {
 }
 
 /** IndexedDB if it works (private mode / old browsers can fail), otherwise memory so the game still runs. */
-export async function openStore(): Promise<KvStore> {
-  try {
+export async function openStore(timeoutMs = 1500, makeIdb: () => KvStore = () => new IdbKv()): Promise<KvStore> {
+  // Some in-app WebViews never fire onsuccess/onerror for indexedDB.open → the probe must time out.
+  const probe = (async () => {
     if (typeof indexedDB === 'undefined') throw new Error('no idb');
-    const kv = new IdbKv();
+    const kv = makeIdb();
     await kv.set('__probe', 1); await kv.del('__probe');
     return kv;
-  } catch { return new MemoryKv(); }
+  })();
+  const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('idb timeout')), timeoutMs));
+  try { return await Promise.race([probe, timeout]); } catch { return new MemoryKv(); }
 }

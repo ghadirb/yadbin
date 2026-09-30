@@ -7,3 +7,5 @@ cd worker && npm test
 - `test/api.test.ts`: روی workerd + D1 واقعی (Miniflare) — Auth، CRUD کلاس، دانش‌آموزان، فعالیت/توکن، مالکیت (معلم A/B)، توکن نامعتبر/منقضی/لغو، Resume، Idempotency (حتی هم‌زمان)، جعل‌ناپذیری جواب مسئله، و **سناریوی پذیرش بند ۴۴** (سمت سرور).
 - تست آفلاین سمت مرورگر و تست Android: در مراحل بعد (بخش وضعیت در README).
 - `test/security.test.ts`: headerهای امنیتی، قفل ورود پس از ۸ تلاش ناموفق، ریست با ورود موفق، rate limit ثبت‌نام به‌ازای IP، CORS در production، رد `JWT_SECRET` ضعیف.
+- `student-web/test/resilience.test.ts`: قطع‌شدن درخواست معلق (timeout)، fallback به حافظه وقتی IndexedDB جواب نمی‌دهد، و پاسخ غیر JSON (بدون crash).
+- تست دستی در مرورگر واقعی: Worker محلی + Chromium headless با همان CSP محیط production؛ لینک بازی هر سه بازی صفحهٔ «سلام 👋» را نشان می‌دهد.
