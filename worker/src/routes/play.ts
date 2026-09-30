@@ -43,8 +43,10 @@ async function startDifficulty(env: Env, row: PlayRow): Promise<1 | 2 | 3> {
 }
 
 /** Returns only what the game needs. No names, ids of teacher/class/student, or other students' data. */
+// Per-IP ceiling is deliberately high: a whole school class usually shares ONE public IP (school Wi-Fi / mobile CGNAT).
+// Abuse is bounded per token below (200 GET/h, 60 POST/h per token).
 export async function getPlay(env: Env, token: string, req?: Request) {
-  if (req) await rateLimitIp(env, req, 'play', 120, 60);
+  if (req) await rateLimitIp(env, req, 'play', 600, 60);
   const row = await loadByToken(env, token);
   await rateLimit(env, `play:token:${token}`, 200, 3600);
   if (row.act_status === 'canceled') throw INACTIVE();
@@ -99,7 +101,7 @@ function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: D
 
 /** Idempotent: one valid result per session. A repeated submission returns the stored outcome without creating a duplicate. */
 export async function completePlay(req: Request, env: Env, token: string) {
-  await rateLimitIp(env, req, 'play', 120, 60);
+  await rateLimitIp(env, req, 'play', 600, 60);
   const row = await loadByToken(env, token);
   await rateLimit(env, `complete:token:${token}`, 60, 3600);
   if (row.act_status === 'canceled') throw INACTIVE();

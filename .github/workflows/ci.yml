@@ -79,3 +79,49 @@ jobs:
           name: yadbin-teacher-debug-apk
           path: teacher-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+
+  e2e:
+    # Acceptance scenario (spec §44) in a real Chromium: local wrangler dev = Worker + built Student Web + local D1.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+        working-directory: worker
+      - name: Build Student Web (served by the Worker as static assets)
+        working-directory: student-web
+        run: |
+          npm ci
+          npm run build
+        env: { VITE_API_BASE: "" }
+      - name: Start Worker (local D1)
+        working-directory: worker
+        run: |
+          printf 'JWT_SECRET=%s\n' "$(head -c 32 /dev/urandom | base64 | tr -d '=+/')ci-e2e-secret-0123456789" > .dev.vars
+          npx wrangler d1 migrations apply yadbin-db --local
+          nohup npx wrangler dev --port 8787 > ../wrangler-e2e.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://localhost:8787/api/health && break; sleep 1; done
+          curl -fs http://localhost:8787/api/health
+      - run: npm ci
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: e2e
+      - name: Run acceptance scenario in Chromium
+        working-directory: e2e
+        run: |
+          set -o pipefail
+          npx playwright test 2>&1 | tee ../e2e.log
+      - name: Publish e2e log to ci-logs-e2e branch (debug aid)
+        if: always()
+        run: |
+          git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
+          { echo "=== playwright ==="; tail -n 250 e2e.log; echo; echo "=== wrangler ==="; tail -n 60 wrangler-e2e.log; } > /tmp/e2e-tail.log || true
+          git checkout --orphan ci-logs-e2e-new
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/e2e-tail.log e2e-tail.log
+          git add e2e-tail.log
+          git commit -m "e2e log for ${GITHUB_SHA}" >/dev/null
+          git push -f origin ci-logs-e2e-new:ci-logs-e2e

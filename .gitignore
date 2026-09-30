@@ -14,3 +14,5 @@ teacher-android/local.properties
 # Secrets must never be committed
 .env
 .env.*
+e2e/test-results/
+e2e/playwright-report/
