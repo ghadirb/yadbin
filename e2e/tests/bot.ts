@@ -55,16 +55,19 @@ export async function playThrough(page: Page, token: string, game: 'memory' | 'a
       const l = level();
       const q = inTutorial ? { sequence: ['red', 'star', 'blue'], isReverse: false } : data.pools[String(l)][(usedInLevel[l] = (usedInLevel[l] ?? -1) + 1)];
       const target: string[] = q.isReverse ? [...q.sequence].reverse() : q.sequence;
+      const node = await nodeOf(page, '.choices');
       for (const s of target) await page.locator(`.choice[aria-label="${MEM_NAME[s]}"]`).click();
-      await page.waitForSelector('.choices', { state: 'detached' });
+      await replaced(page, node);
     } else if (kind === 'attention') {
       const color = (await page.locator('.rule').first().innerText()).trim().split(/\s+/)[0];
+      const node = await nodeOf(page, '.grid');
       const cells = page.locator(`button.cell[aria-label="${color}"]`);
       const n = await cells.count();
       for (let i = 0; i < n; i++) await cells.nth(i).click();
       await page.getByRole('button', { name: /تمام شد/ }).click();
-      await page.waitForSelector('.grid', { state: 'detached' });
+      await replaced(page, node);
     } else if (kind === 'problem') {
+      const node = await nodeOf(page, '.options');
       const text = (await page.locator('.question').innerText()).trim();
       const ans = answers.get(text);
       expect(ans, `no known answer for question "${text}"`).toBeTruthy();
@@ -74,11 +77,16 @@ export async function playThrough(page: Page, token: string, game: 'memory' | 'a
         hintDone = true;
       }
       await page.locator('.option').filter({ hasText: new RegExp(`^\\s*${esc(ans!)}\\s*$`) }).first().click();
-      await page.waitForSelector('.options', { state: 'detached' });
+      await replaced(page, node);
     }
     if (!inTutorial) { answered++; await opts.onAnswered?.(answered); }
   }
   throw new Error('bot timed out before the game finished');
+}
+
+async function nodeOf(page: Page, sel: string) { return page.locator(sel).first().elementHandle(); }
+async function replaced(page: Page, node: Awaited<ReturnType<typeof nodeOf>>) {
+  await page.waitForFunction((e) => !e || !e.isConnected, node, { timeout: 15_000 });
 }
 
 export async function readIdb(page: Page, key: string): Promise<any> {
