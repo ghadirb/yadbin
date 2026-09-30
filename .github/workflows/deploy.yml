@@ -1,4 +1,4 @@
-name: Deploy (Cloudflare)
+name: Deploy (Cloudflare Worker + Student Web)
 
 # Manual only. Required repository secrets:
 #   CLOUDFLARE_API_TOKEN  (Workers Scripts:Edit, D1:Edit, Pages:Edit, Account Settings:Read)
@@ -7,9 +7,6 @@ name: Deploy (Cloudflare)
 on:
   workflow_dispatch:
     inputs:
-      pages_project:
-        description: Cloudflare Pages project name for the Student Web
-        default: yadbin
       migrate:
         description: Apply D1 migrations
         type: boolean
@@ -46,6 +43,14 @@ jobs:
       - run: npm ci
         working-directory: worker
 
+      # Student Web is served by the Worker itself (static assets, same origin as /api) → build it first.
+      - name: Build Student Web (same-origin API)
+        working-directory: student-web
+        run: |
+          npm ci
+          npm run build
+        env: { VITE_API_BASE: "" }
+
       - name: Ensure D1 database
         working-directory: worker
         run: |
@@ -72,38 +77,22 @@ jobs:
           printf '%s' "$JWT" | npx wrangler secret put JWT_SECRET
         env: { JWT: "${{ secrets.JWT_SECRET }}" }
 
-      - name: Build Student Web
-        working-directory: student-web
-        run: |
-          npm ci
-          npm run build
-        env: { VITE_API_BASE: "${{ env.WORKER_URL }}" }
-
-      - name: Deploy Student Web (Pages)
-        working-directory: student-web
-        run: |
-          npx wrangler pages project create "${{ inputs.pages_project }}" --production-branch main || true
-          npx wrangler pages deploy dist --project-name "${{ inputs.pages_project }}" --branch main
-
       - name: Smoke test
         run: |
-          PAGES="https://${{ inputs.pages_project }}.pages.dev"
-          echo "::notice title=Worker URL::$WORKER_URL"
-          echo "::notice title=Pages URL::$PAGES"
+          echo "::notice title=Game URL::$WORKER_URL/play/{token}"
           ok=0
           for i in 1 2 3 4 5 6; do
             H=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$WORKER_URL/api/health" || true)
-            P=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$PAGES/" || true)
-            I=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$WORKER_URL/api/play/AAAAAAAAAAAAAAAA" || true)
-            echo "try $i: health=$H pages=$P invalid-token=$I"
-            if [ "$H" = 200 ] && [ "$P" = 200 ] && [ "$I" = 404 ]; then ok=1; break; fi
+            P=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$WORKER_URL/play/AAAAAAAAAAAAAAAA" || true)
+            T=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$WORKER_URL/api/play/AAAAAAAAAAAAAAAA" || true)
+            echo "try $i: health=$H play-page=$P invalid-token-api=$T"
+            if [ "$H" = 200 ] && [ "$P" = 200 ] && [ "$T" = 404 ]; then ok=1; break; fi
             sleep 10
           done
-          echo "::notice title=Smoke test::health=$H pages=$P invalid-token=$I"
+          echo "::notice title=Smoke test::health=$H play-page=$P invalid-token-api=$T"
           [ "$ok" = 1 ] || { echo "::error::smoke test failed"; exit 1; }
 
       - name: Summary
         run: |
-          echo "Worker: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "Student Web: https://${{ inputs.pages_project }}.pages.dev" >> "$GITHUB_STEP_SUMMARY"
-          echo "Remember: PLAY_BASE_URL and ALLOWED_ORIGIN in worker/wrangler.toml must match the Pages URL." >> "$GITHUB_STEP_SUMMARY"
+          echo "Game links: $WORKER_URL/play/{token}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Remember: PLAY_BASE_URL in worker/wrangler.toml must equal $WORKER_URL (or your custom domain)." >> "$GITHUB_STEP_SUMMARY"

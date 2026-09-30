@@ -15,7 +15,7 @@ workflow دستی `Deploy (Cloudflare)` (فایل `.github/workflows/deploy.yml`
 
 Secrets لازم در ریپو: `CLOUDFLARE_API_TOKEN` (دسترسی Workers Scripts، D1، Pages ویرایش و Account Settings خواندن) و `JWT_SECRET` (حداقل ۳۲ کاراکتر تصادفی). `CLOUDFLARE_ACCOUNT_ID` اختیاری است.
 
-پس از اولین دیپلوی، `PLAY_BASE_URL` و `ALLOWED_ORIGIN` در `worker/wrangler.toml` باید دقیقاً برابر آدرس Pages باشند (مقدار پیش‌فرض: `https://yadbin.pages.dev`).
+پس از اولین دیپلوی، `PLAY_BASE_URL` و `ALLOWED_ORIGIN` در `worker/wrangler.toml` باید دقیقاً برابر آدرس Pages باشند (مقدار فعلی: آدرس `workers.dev` خود Worker).
 
 ## امنیت
 
@@ -27,3 +27,11 @@ Secrets لازم در ریپو: `CLOUDFLARE_API_TOKEN` (دسترسی Workers Scr
 ## بارگذاری سریع در شبکه‌های کند/فیلترشده
 
 بعد از `vite build` اسکریپت `student-web/scripts/inline.mjs` همهٔ JS و CSS را داخل `index.html` قرار می‌دهد، تا شروع بازی فقط به **یک درخواست** برای صفحه نیاز داشته باشد. CSP با hash دقیق همان اسکریپت‌ها به‌روز می‌شود، بنابراین `script-src` همچنان سخت‌گیر می‌ماند.
+
+## Student Web روی همان Worker (بدون pages.dev)
+
+از این نسخه، صفحهٔ بازی (`student-web/dist`) به‌صورت static assets توسط خود Worker سرو می‌شود و لینک‌ها به شکل `https://<worker>.workers.dev/play/{token}` هستند. دلیل: آدرس `pages.dev` در بعضی شبکه‌های ایران قطع می‌شود، ولی `workers.dev` باز است. API و صفحه هم‌مبدأ هستند (بدون CORS). فقط مسیر `/api/*` کد Worker را اجرا می‌کند.
+
+- قبل از هر دستور `wrangler` (حتی `db:migrate:local`) یک بار `npm run build` را در `student-web` بزنید تا پوشهٔ `dist` وجود داشته باشد.
+- پروژهٔ قدیمی Pages دیگر دیپلوی نمی‌شود و می‌توان آن را از داشبورد Cloudflare حذف کرد.
+- اگر بعداً دامنهٔ اختصاصی گرفتید، آن را به Worker وصل کنید و `PLAY_BASE_URL` را عوض کنید.

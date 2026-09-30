@@ -12,6 +12,14 @@ migrations_dir = "migrations"
 
 [vars]
 ENVIRONMENT = "production"
-# Set to the exact origin of the deployed Student Web (same as PLAY_BASE_URL).
-ALLOWED_ORIGIN = "https://yadbin.pages.dev"
-PLAY_BASE_URL = "https://yadbin.pages.dev"
+# The Student Web is served by this same Worker (static assets below), so the API is same-origin.
+# PLAY_BASE_URL = the public origin of the Worker (workers.dev, or your custom domain later).
+ALLOWED_ORIGIN = "https://yadbin-api.ghadir-baraty3.workers.dev"
+PLAY_BASE_URL = "https://yadbin-api.ghadir-baraty3.workers.dev"
+
+# Student Web (built by `npm run build` in ../student-web) is served from the same origin as the API.
+# Only /api/* runs Worker code; every other path is a static file, with SPA fallback to index.html (/play/{token}).
+[assets]
+directory = "../student-web/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]

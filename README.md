@@ -47,7 +47,7 @@ npm test                              # 44 تست
 |---|---|---|
 | `JWT_SECRET` | secret | کلید امضای نشست معلم (`wrangler secret put JWT_SECRET`) |
 | `ALLOWED_ORIGIN` | var | مبدأ مجاز CORS (در production آدرس Student Web) |
-| `PLAY_BASE_URL` | var | پایه‌ی لینک دانش‌آموز، مثل `https://yadbin.pages.dev` |
+| `PLAY_BASE_URL` | var | پایه‌ی لینک دانش‌آموز، مثل `https://yadbin-api.ghadir-baraty3.workers.dev` |
 | `DB` | binding | پایگاه D1 |
 
 جزئیات بیشتر: `docs/`.

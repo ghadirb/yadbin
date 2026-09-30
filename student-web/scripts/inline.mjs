@@ -33,4 +33,6 @@ writeFileSync(new URL('_headers', dist), headers.replace("script-src 'self'", `s
 
 rmSync(new URL('assets/', dist), { recursive: true, force: true });
 rmSync(new URL('boot-check.js', dist), { force: true });
+// SPA fallback is handled by the platform (Workers assets `not_found_handling`); the catch-all rule would be flagged as a redirect loop.
+rmSync(new URL('_redirects', dist), { force: true });
 console.log(`inlined into index.html (${(html.length / 1024).toFixed(1)} KB), ${hashes.length} script hashes`);
