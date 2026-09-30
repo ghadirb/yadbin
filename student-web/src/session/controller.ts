@@ -14,7 +14,7 @@ export interface GameUi {
   end(kind: 'sent' | 'saved' | 'already'): void;
   error(kind: 'invalid' | 'expired' | 'canceled' | 'network' | 'generic', message: string, retry?: () => void): void;
 }
-export interface SessionDeps { token: string; api: PlayApi; store: KvStore; ui: GameUi; now?: () => number; retryIntervalMs?: number }
+export interface SessionDeps { token: string; api: PlayApi; store: KvStore; ui: GameUi; now?: () => number; retryIntervalMs?: number; firstLoadRetryDelayMs?: number }
 export type SessionOutcome = 'finished' | 'already_done' | 'error';
 
 const stateKey = (t: string) => `session:${t}`;
@@ -22,6 +22,16 @@ const fresh = (d: PlayPayload, now: number): SessionState => ({
   sessionId: d.session.id, game: d.game, difficultyMode: d.difficultyMode, questionCount: d.questionCount, pools: d.pools,
   difficulty: d.startDifficulty, used: [], events: [], blockScores: [], tutorialDone: false, startedAtMs: now, activeMs: 0, finished: false,
 });
+
+/** The very first request on a flaky/filtered network often fails once and then works: retry quietly before bothering the child. */
+async function getPlayWithRetry(api: PlayApi, token: string, delayMs: number, tries = 3) {
+  let r = await api.getPlay(token);
+  for (let i = 1; i < tries && r.kind === 'network'; i++) {
+    await new Promise((res) => setTimeout(res, delayMs * i));
+    r = await api.getPlay(token);
+  }
+  return r;
+}
 
 export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
   const { token, api, store, ui } = d;
@@ -36,7 +46,7 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
     return 'finished';
   }
 
-  const r = await api.getPlay(token);
+  const r = local ? await api.getPlay(token) : await getPlayWithRetry(api, token, d.firstLoadRetryDelayMs ?? 800);
   if (r.kind === 'network') {
     if (!local) {
       ui.error('network', 'اتصال اینترنت قطع شد. لطفاً دوباره تلاش کنید.', () => void runSession(d));

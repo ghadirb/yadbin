@@ -19,6 +19,10 @@ let watchdog = '';
 html = html.replace(/\s*<script src="\/boot-check\.js"[^>]*><\/script>/, () => { n++; watchdog = safe(read('boot-check.js')); return ''; });
 if (n !== 3) throw new Error(`inline.mjs: expected 3 replacements, got ${n} — index.html layout changed`);
 
+// Start the TLS handshake to the API host while the page is still parsing (first connection is the flaky one).
+const api = process.env.VITE_API_BASE;
+if (api && /^https:\/\/[\w.-]+$/.test(api)) html = html.replace('</head>', `  <link rel="preconnect" href="${api}" crossorigin>\n</head>`);
+
 hashes.push(hash(appJs), hash(watchdog));
 html = html.replace('</body>', `  <script type="module">${appJs}</script>\n  <script>${watchdog}</script>\n</body>`);
 writeFileSync(new URL('index.html', dist), html);

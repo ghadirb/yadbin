@@ -26,3 +26,23 @@ describe('resilience on filtered / hanging networks', () => {
     expect(got).toBe('generic');
   });
 });
+
+describe('first-load retry', () => {
+  it('retries a failed first request quietly and then plays', async () => {
+    const { runSession } = await import('../src/session/controller');
+    let calls = 0; const errors: string[] = [];
+    const payload = { session: { id: 's1' }, status: 'active', game: 'memory', difficultyMode: 'adaptive', questionCount: 5, pools: {}, startDifficulty: 1 };
+    const api = { getPlay: async () => (++calls < 3 ? { kind: 'network' } : { kind: 'ok', data: payload }), complete: async () => ({ kind: 'ok', data: {} }) } as any;
+    const ui: any = { error: (k: string) => errors.push(k), welcome: async () => { throw new Error('reached welcome'); } };
+    await expect(runSession({ token: 'ABCDEFGH', api, store: new MemoryKv(), ui, firstLoadRetryDelayMs: 1 })).rejects.toThrow('reached welcome');
+    expect(calls).toBe(3); expect(errors).toEqual([]);
+  });
+  it('shows the network error only after all retries fail', async () => {
+    const { runSession } = await import('../src/session/controller');
+    let calls = 0; let kind = '';
+    const api = { getPlay: async () => { calls++; return { kind: 'network' }; }, complete: async () => ({ kind: 'network' }) } as any;
+    const ui: any = { error: (k: string) => { kind = k; } };
+    expect(await runSession({ token: 'ABCDEFGH', api, store: new MemoryKv(), ui, firstLoadRetryDelayMs: 1 })).toBe('error');
+    expect(calls).toBe(3); expect(kind).toBe('network');
+  });
+});

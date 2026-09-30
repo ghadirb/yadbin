@@ -8,7 +8,7 @@ export interface PlayApi {
   complete(token: string, payload: unknown): Promise<ApiResult<any>>;
 }
 
-export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(...a), timeoutMs = 15000): PlayApi {
+export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(...a), timeoutMs = 8000): PlayApi {
   async function call(method: string, path: string, body?: unknown): Promise<ApiResult<any>> {
     // Filtered/slow networks often hang instead of failing: abort so the UI can offer a retry.
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
