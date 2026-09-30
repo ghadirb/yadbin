@@ -1,5 +1,8 @@
 package com.yadbin.teacher.ui.auth
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -139,6 +143,17 @@ private fun PasswordField(value: String, onChange: (String) -> Unit, label: Stri
 @Composable
 private fun RecoveryCodeDialog(code: String, onConfirm: () -> Unit) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    // Storage Access Framework: the user picks where to save; no storage permission needed.
+    val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val ok = runCatching {
+            context.contentResolver.openOutputStream(uri)?.use {
+                it.write("کد بازیابی رمز عبور یادبین\n$code\n\nاین کد را در جای امن نگه دارید. با آن می‌توانید در صفحهٔ ورود، «رمز عبور را فراموش کرده‌ام» رمز جدید بگذارید.\n".toByteArray(Charsets.UTF_8))
+            } != null
+        }.getOrDefault(false)
+        Toast.makeText(context, if (ok) "کد ذخیره شد." else "ذخیره‌سازی ناموفق بود.", Toast.LENGTH_SHORT).show()
+    }
     AlertDialog(
         onDismissRequest = {},
         title = { Text("کد بازیابی رمز") },
@@ -147,7 +162,10 @@ private fun RecoveryCodeDialog(code: String, onConfirm: () -> Unit) {
                 Text("اگر رمز عبور را فراموش کردید، فقط با این کد می‌توانید رمز جدید بگذارید. آن را در جای امن ذخیره کنید؛ این کد دوباره نمایش داده نمی‌شود.")
                 Spacer(Modifier.height(12.dp))
                 Text(code, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("کپی کد") }
+                Row(Modifier.align(Alignment.CenterHorizontally)) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }) { Text("کپی کد") }
+                    TextButton(onClick = { saveFile.launch("yadbin-recovery-code.txt") }) { Text("دانلود (فایل متنی)") }
+                }
             }
         },
         confirmButton = { Button(onClick = onConfirm) { Text("ذخیره کردم") } },
