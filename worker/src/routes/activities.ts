@@ -1,17 +1,34 @@
 import type { Env } from '../env';
-import { activityDto, GAME_NAMES_FA, getOwnedActivity, getOwnedClass } from '../db/queries';
+import { activityDto, effectiveGradeOrder, GAME_NAMES_FA, getOwnedActivity, getOwnedClass } from '../db/queries';
+import { activityFit, computeAge, GRADES, gradeByCode, inferGradeOrder, type Fit } from '../education/catalog';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, newPlayToken, nowIso } from '../utils/ids';
 import { activitySchema, activityUpdateSchema, duplicateSchema, parse, regenerateSchema } from '../validation/schemas';
 
 const playUrl = (env: Env, token: string) => `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/play/${token}`;
 const DEFAULT_EXPIRY_DAYS = 30;
+const gradeByOrderCode = (o: number | null) => (o == null ? null : GRADES.find((g) => g.order === o)?.code ?? null);
 const ORDINALS_FA = ['', 'اول', 'دوم', 'سوم', 'چهارم', 'پنجم', 'ششم', 'هفتم', 'هشتم', 'نهم', 'دهم'];
 
 interface NewActivity {
   classId: string; gameType: string; difficultyMode: string; questionCount: number;
   title: string | null; description: string | null; suggestedMinutes: number | null; expiresInDays?: number;
+  ageMin?: number | null; ageMax?: number | null; gradeMin?: string | null; gradeMax?: string | null; level?: string | null; skills?: string[] | null; templateId?: string | null;
 }
+
+/** Fit of each student to an activity's age/grade range. Advisory only: it never blocks creation or assignment. */
+async function fitFor(env: Env, teacherId: string, a: any, studentIds: string[]) {
+  if (!studentIds.length) return [];
+  const rows = await env.DB.prepare(
+    `SELECT s.*, (SELECT c.grade_order FROM class_students cs JOIN classes c ON c.id = cs.class_id WHERE cs.student_id = s.id AND cs.removed_at IS NULL ORDER BY cs.added_at DESC LIMIT 1) AS class_order
+       FROM students s WHERE s.teacher_id = ? AND s.id IN (${studentIds.map(() => '?').join(',')})`,
+  ).bind(teacherId, ...studentIds).all<any>();
+  return rows.results.map((s) => {
+    const gradeOrder = s.grade_order ?? inferGradeOrder(s.grade) ?? s.class_order ?? null;
+    return { studentId: s.id, ...activityFit({ ageMin: a.age_min, ageMax: a.age_max, gradeMin: a.grade_min, gradeMax: a.grade_max }, { age: computeAge(s).age, gradeOrder }) };
+  });
+}
+const fitSummary = (fits: { fit: Fit }[]) => fits.reduce<Record<string, number>>((m, f) => ({ ...m, [f.fit]: (m[f.fit] ?? 0) + 1 }), {});
 
 async function assertClassOpen(env: Env, teacherId: string, classId: string) {
   const c = await getOwnedClass(env.DB, teacherId, classId);
@@ -43,13 +60,16 @@ async function insertActivity(env: Env, teacherId: string, a: NewActivity, chose
   const expires = new Date(Date.now() + (a.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 86400_000).toISOString();
   const links = chosen.map((s) => ({ rowId: newId(), studentId: s.id, name: s.display_name, token: newPlayToken() }));
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO activities (id,teacher_id,class_id,game_type,difficulty_mode,question_count,status,created_at,expires_at,title,description,suggested_minutes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(id, teacherId, a.classId, a.gameType, a.difficultyMode, a.questionCount, 'active', now, expires, a.title, a.description, a.suggestedMinutes),
+    env.DB.prepare('INSERT INTO activities (id,teacher_id,class_id,game_type,difficulty_mode,question_count,status,created_at,expires_at,title,description,suggested_minutes,age_min,age_max,grade_min,grade_max,activity_level,skills_json,template_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(id, teacherId, a.classId, a.gameType, a.difficultyMode, a.questionCount, 'active', now, expires, a.title, a.description, a.suggestedMinutes,
+        a.ageMin ?? null, a.ageMax ?? null, gradeByCode(a.gradeMin)?.order ?? null, gradeByCode(a.gradeMax)?.order ?? null, a.level ?? null, a.skills?.length ? JSON.stringify(a.skills) : null, a.templateId ?? null),
     ...links.map((l) => env.DB.prepare('INSERT INTO activity_students (id,activity_id,student_id,token,status) VALUES (?,?,?,?,?)').bind(l.rowId, id, l.studentId, l.token, 'pending')),
   ]);
   const row = await env.DB.prepare('SELECT * FROM activities WHERE id = ?').bind(id).first<any>();
+  const fits = await fitFor(env, teacherId, row, chosen.map((c) => c.id));
   return {
     activity: activityDto(row, links.length, 0),
+    suitability: { summary: fitSummary(fits), students: fits.filter((f) => f.fit === 'easier_possible' || f.fit === 'out_of_range') },
     links: links.map((l) => ({ studentId: l.studentId, name: l.name, token: l.token, url: playUrl(env, l.token) })),
   };
 }
@@ -81,7 +101,16 @@ export async function listActivities(req: Request, env: Env, teacherId: string) 
        FROM activities a WHERE a.teacher_id = ? ${classId ? 'AND a.class_id = ?' : ''} ORDER BY a.created_at DESC LIMIT 200`,
   ).bind(...(classId ? [teacherId, classId] : [teacherId])).all<any>();
   const all = results.map((a) => activityDto(a, a.assigned_n, a.completed_n));
-  const activities = all.filter((a) => (want === 'all' ? true : want === 'open' ? a.lifecycle !== 'archived' : a.lifecycle === want));
+  const sp = url.searchParams;
+  const gradeF = gradeByCode(sp.get('grade'))?.order ?? null, skillF = sp.get('skill'), levelF = sp.get('level'), gameF = sp.get('gameType');
+  const completion = sp.get('completion'); // done = everyone finished, open = somebody still has to
+  const activities = all.filter((a) => (want === 'all' ? true : want === 'open' ? a.lifecycle !== 'archived' : a.lifecycle === want))
+    .filter((a) => !gameF || a.gameType === gameF)
+    .filter((a) => !levelF || a.level === levelF)
+    .filter((a) => !skillF || a.effectiveSkills.includes(skillF))
+    // grade filter: activities whose range contains the grade, plus activities without any range (old/unrestricted ones)
+    .filter((a) => gradeF === null || !a.hasSuitabilityRange || ((a.gradeMin === null || (gradeByCode(a.gradeMin)!.order <= gradeF)) && (a.gradeMax === null || (gradeByCode(a.gradeMax)!.order >= gradeF))))
+    .filter((a) => !completion || (completion === 'done' ? a.assigned > 0 && a.completed >= a.assigned : a.completed < a.assigned));
   return json({ activities });
 }
 
@@ -92,9 +121,10 @@ export async function getActivity(env: Env, teacherId: string, id: string) {
        FROM activity_students ast JOIN students s ON s.id = ast.student_id WHERE ast.activity_id = ? ORDER BY s.display_name`,
   ).bind(id).all<any>();
   const c = await counts(env, id);
+  const fits = new Map((await fitFor(env, teacherId, a, rows.results.map((r) => r.student_id))).map((f) => [f.studentId, f]));
   return json({
     activity: activityDto(a, c.assigned, c.completed),
-    students: rows.results.map((r) => ({ studentId: r.student_id, name: r.display_name, token: r.token, url: playUrl(env, r.token), status: r.status, startedAt: r.started_at, completedAt: r.completed_at })),
+    students: rows.results.map((r) => ({ studentId: r.student_id, name: r.display_name, token: r.token, url: playUrl(env, r.token), status: r.status, startedAt: r.started_at, completedAt: r.completed_at, fit: fits.get(r.student_id)?.fit ?? 'unknown', fitLabel: fits.get(r.student_id)?.label ?? null, fitReasons: fits.get(r.student_id)?.reasons ?? [] })),
   });
 }
 
@@ -109,12 +139,15 @@ export async function updateActivity(req: Request, env: Env, teacherId: string, 
     throw new HttpError(409, 'activity_in_progress', 'پس از شروع دانش‌آموزان، سطح دشواری و تعداد سؤال قابل تغییر نیست. از «ساخت نسخه جدید» استفاده کنید.');
   const expires = b.expiresInDays !== undefined ? new Date(Date.now() + b.expiresInDays * 86400_000).toISOString() : a.expires_at;
   await env.DB.prepare(
-    'UPDATE activities SET title=?, description=?, suggested_minutes=?, difficulty_mode=?, question_count=?, expires_at=? WHERE id=? AND teacher_id=?',
+    'UPDATE activities SET title=?, description=?, suggested_minutes=?, difficulty_mode=?, question_count=?, expires_at=?, age_min=?, age_max=?, grade_min=?, grade_max=?, activity_level=?, skills_json=? WHERE id=? AND teacher_id=?',
   ).bind(
     b.title !== undefined ? (b.title || null) : a.title,
     b.description !== undefined ? (b.description || null) : a.description,
     b.suggestedMinutes !== undefined ? b.suggestedMinutes : a.suggested_minutes,
-    b.difficultyMode ?? a.difficulty_mode, b.questionCount ?? a.question_count, expires, id, teacherId,
+    b.difficultyMode ?? a.difficulty_mode, b.questionCount ?? a.question_count, expires,
+    b.ageMin !== undefined ? b.ageMin : a.age_min, b.ageMax !== undefined ? b.ageMax : a.age_max,
+    b.gradeMin !== undefined ? gradeByCode(b.gradeMin)?.order ?? null : a.grade_min, b.gradeMax !== undefined ? gradeByCode(b.gradeMax)?.order ?? null : a.grade_max,
+    b.level !== undefined ? b.level : a.activity_level, b.skills !== undefined ? (b.skills?.length ? JSON.stringify(b.skills) : null) : a.skills_json, id, teacherId,
   ).run();
   return getActivity(env, teacherId, id);
 }
@@ -136,6 +169,8 @@ export async function duplicateActivity(req: Request, env: Env, teacherId: strin
   const out = await insertActivity(env, teacherId, {
     classId: a.class_id, gameType: a.game_type, difficultyMode: a.difficulty_mode, questionCount: a.question_count,
     title, description: a.description, suggestedMinutes: a.suggested_minutes,
+    ageMin: a.age_min, ageMax: a.age_max, gradeMin: gradeByOrderCode(a.grade_min), gradeMax: gradeByOrderCode(a.grade_max), level: a.activity_level,
+    skills: a.skills_json ? JSON.parse(a.skills_json) : null, templateId: a.template_id,
   }, chosen);
   return json(out, 201);
 }

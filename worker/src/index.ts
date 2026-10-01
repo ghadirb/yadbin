@@ -6,6 +6,7 @@ import * as students from './routes/students';
 import * as activities from './routes/activities';
 import * as play from './routes/play';
 import * as reports from './routes/reports';
+import { catalogDto } from './education/catalog';
 import { corsHeaders, HttpError, json } from './utils/http';
 
 type P = Record<string, string>;
@@ -31,6 +32,9 @@ add('POST', '/api/classes/:id/students', true, (req, env, p, t) => classes.addSt
 add('DELETE', '/api/classes/:id/students/:sid', true, (_r, env, p, t) => classes.removeStudentFromClass(env, t, p.id, p.sid));
 
 add('POST', '/api/students', true, (req, env, _p, t) => students.createStudent(req, env, t));
+add('GET', '/api/meta/education', false, () => Promise.resolve(json(catalogDto())));
+add('PUT', '/api/students/:id', true, (req, env, p, t) => students.updateStudent(req, env, t, p.id));
+add('GET', '/api/students/:id/profile', true, async (_r, env, p, t) => json({ student: await students.studentWithClassGrade(env, t, p.id) }));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));
 add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStudentHistory(env, t, p.id));
 add('DELETE', '/api/students/:id/data', true, (_r, env, p, t) => students.clearStudentData(env, t, p.id));

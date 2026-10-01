@@ -1,4 +1,5 @@
 import { notFound } from '../utils/http';
+import { computeAge, DEFAULT_SKILLS, gradeByCode, gradeByOrder, inferGradeOrder, levelLabel, parseSkills, skillLabel } from '../education/catalog';
 
 /** Ownership guards. Every teacher endpoint goes through these: a foreign id looks exactly like a missing one (404). */
 export async function getOwnedClass(db: D1Database, teacherId: string, classId: string) {
@@ -16,7 +17,27 @@ export async function getOwnedActivity(db: D1Database, teacherId: string, activi
   if (!row) throw notFound('فعالیت یافت نشد.');
   return row;
 }
-export const classDto = (c: any) => ({ id: c.id, name: c.name, grade: c.grade, schoolName: c.school_name, createdAt: c.created_at, archivedAt: c.archived_at ?? null, archived: !!c.archived_at });
+/** Effective grade ordinal: the structured value when set, else a best-effort reading of the old free-text grade. */
+export const effectiveGradeOrder = (row: any): number | null => row.grade_order ?? inferGradeOrder(row.grade);
+export const classDto = (c: any) => {
+  const order = effectiveGradeOrder(c);
+  return {
+    id: c.id, name: c.name, grade: c.grade, schoolName: c.school_name, createdAt: c.created_at, archivedAt: c.archived_at ?? null, archived: !!c.archived_at,
+    gradeCode: c.grade_code ?? null, gradeOrder: order, gradeLabel: gradeByCode(c.grade_code)?.label ?? c.grade,
+    ageMin: c.age_min ?? null, ageMax: c.age_max ?? null, educationStage: c.education_stage ?? null,
+  };
+};
+/** Student profile as shown to the owning teacher. Age is computed here, never stored. */
+export const studentDto = (s: any, classGradeOrder: number | null = null) => {
+  const { age, approximate } = computeAge(s);
+  const own = s.grade_order ?? inferGradeOrder(s.grade);
+  const order = own ?? classGradeOrder;
+  return {
+    id: s.id, name: s.display_name, age, ageApproximate: age !== null && approximate, birthDate: s.birth_date ?? null, birthYear: s.birth_year ?? null,
+    gradeCode: s.grade_code ?? gradeByOrder(order)?.code ?? null, gradeOrder: order, gradeLabel: gradeByOrder(order)?.label ?? s.grade ?? null,
+    gender: s.gender ?? null, note: s.teacher_note ?? null,
+  };
+};
 
 export const GAME_NAMES_FA: Record<string, string> = { memory: 'به خاطر بسپار', attention: 'پیداش کن', problem_solving: 'راهش را پیدا کن' };
 
@@ -40,5 +61,12 @@ export const activityDto = (a: any, assigned = 0, completed = 0) => {
     title: a.title || GAME_NAMES_FA[a.game_type] || a.game_type, description: a.description ?? null, suggestedMinutes: a.suggested_minutes ?? null,
     status: a.status, lifecycle, lifecycleLabel: LIFECYCLE_LABELS_FA[lifecycle], archivedAt: a.archived_at ?? null,
     createdAt: a.created_at, expiresAt: a.expires_at, assigned, completed,
+    ageMin: a.age_min ?? null, ageMax: a.age_max ?? null,
+    gradeMin: gradeByOrder(a.grade_min)?.code ?? null, gradeMax: gradeByOrder(a.grade_max)?.code ?? null,
+    gradeMinLabel: gradeByOrder(a.grade_min)?.label ?? null, gradeMaxLabel: gradeByOrder(a.grade_max)?.label ?? null,
+    level: a.activity_level ?? null, levelLabel: levelLabel(a.activity_level), templateId: a.template_id ?? null,
+    skills: parseSkills(a.skills_json), effectiveSkills: parseSkills(a.skills_json) ?? DEFAULT_SKILLS[a.game_type] ?? [],
+    skillLabels: (parseSkills(a.skills_json) ?? DEFAULT_SKILLS[a.game_type] ?? []).map(skillLabel),
+    hasSuitabilityRange: a.age_min != null || a.age_max != null || a.grade_min != null || a.grade_max != null,
   };
 };

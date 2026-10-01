@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { HttpError } from '../utils/http';
+import { gradeByCode, isGradeCode, LEVEL_CODES, normalizeBirthYear, SKILL_CODES } from '../education/catalog';
 
 const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
@@ -29,16 +30,39 @@ export const resetPasswordSchema = z.object({
   newPassword: password,
 });
 export const loginSchema = z.object({ phone, password: z.string().min(1, 'رمز عبور الزامی است.') });
+const gradeCode = z.string().refine(isGradeCode, 'پایه معتبر نیست.');
+const ageNum = (label: string) => z.number({ error: `${label} معتبر نیست.` }).int(`${label} معتبر نیست.`).min(3, `${label} معتبر نیست.`).max(25, `${label} معتبر نیست.`);
+const rangeCheck = (v: { ageMin?: number | null; ageMax?: number | null }, ctx: z.RefinementCtx) => {
+  if (v.ageMin != null && v.ageMax != null && v.ageMin > v.ageMax) ctx.addIssue({ code: 'custom', message: 'حداقل سن نباید از حداکثر سن بیشتر باشد.', path: ['ageMin'] });
+};
+/** `grade` (free text) stays for v1.0/v1.1 clients; `gradeCode` is the structured v1.2 field. undefined = keep, null = clear. */
 export const classSchema = z.object({
-  name: name('نام کلاس'), grade: name('پایه', 40),
+  name: name('نام کلاس'), grade: name('پایه', 40).optional(), gradeCode: gradeCode.nullable().optional(),
   schoolName: z.string().trim().max(100).optional().nullable().transform((v) => v || null),
+  ageMin: ageNum('حداقل سن').nullable().optional(), ageMax: ageNum('حداکثر سن').nullable().optional(),
+  educationStage: z.enum(['preschool', 'primary', 'lower_secondary', 'upper_secondary']).nullable().optional(),
+}).superRefine(rangeCheck).superRefine((v, ctx) => {
+  if (!v.grade && !v.gradeCode) ctx.addIssue({ code: 'custom', message: 'پایه الزامی است.', path: ['grade'] });
 });
-export const studentSchema = z.object({ name: name('نام دانش‌آموز'), classId: z.string().uuid().optional() });
+const birthDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاریخ تولد معتبر نیست.').refine((v) => { const d = new Date(v + 'T00:00:00Z'); return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v && d.getTime() <= Date.now() && d.getUTCFullYear() >= 1990; }, 'تاریخ تولد معتبر نیست.');
+const birthYear = z.number().int('سال تولد معتبر نیست.').transform(normalizeBirthYear).refine((y) => y >= 1990 && y <= new Date().getUTCFullYear(), 'سال تولد معتبر نیست.');
+/** Optional student profile fields (v1.2). Nothing is mandatory; undefined = keep, null = clear. `age` is converted to a birth year (age is never stored). */
+export const studentProfileFields = {
+  birthDate: birthDate.nullable().optional(), birthYear: birthYear.nullable().optional(), age: ageNum('سن').nullable().optional(),
+  gradeCode: gradeCode.nullable().optional(), gender: z.enum(['female', 'male']).nullable().optional(),
+  note: z.string().trim().max(500, 'توضیحات خیلی بلند است.').nullable().optional(),
+};
+export const studentSchema = z.object({ name: name('نام دانش‌آموز'), classId: z.string().uuid().optional(), ...studentProfileFields });
+export const studentUpdateSchema = z.object({ name: name('نام دانش‌آموز').optional(), ...studentProfileFields });
 export const bulkStudentsSchema = z.object({
   name: z.string().optional(),
   names: z.array(z.string()).optional(),
   text: z.string().max(20000).optional(),
 });
+const gradeRangeCheck = (v: { gradeMin?: string | null; gradeMax?: string | null }, ctx: z.RefinementCtx) => {
+  const a = gradeByCode(v.gradeMin), b = gradeByCode(v.gradeMax);
+  if (a && b && a.order > b.order) ctx.addIssue({ code: 'custom', message: 'پایه شروع نباید بالاتر از پایه پایان باشد.', path: ['gradeMin'] });
+};
 export const activitySchema = z.object({
   classId: z.string().uuid('کلاس معتبر نیست.'),
   gameType: z.enum(['memory', 'attention', 'problem_solving'], { error: 'بازی معتبر نیست.' }),
@@ -49,7 +73,12 @@ export const activitySchema = z.object({
   title: z.string().trim().max(80, 'عنوان خیلی بلند است.').optional().nullable().transform((v) => v || null),
   description: z.string().trim().max(500, 'توضیحات خیلی بلند است.').optional().nullable().transform((v) => v || null),
   suggestedMinutes: z.number().int().min(1, 'زمان معتبر نیست.').max(120, 'زمان معتبر نیست.').optional().nullable().transform((v) => v ?? null),
-});
+  ageMin: ageNum('حداقل سن').nullable().optional(), ageMax: ageNum('حداکثر سن').nullable().optional(),
+  gradeMin: gradeCode.nullable().optional(), gradeMax: gradeCode.nullable().optional(),
+  level: z.enum(LEVEL_CODES, { error: 'سطح فعالیت معتبر نیست.' }).nullable().optional(),
+  skills: z.array(z.enum(SKILL_CODES, { error: 'مهارت معتبر نیست.' })).max(5, 'حداکثر ۵ مهارت').nullable().optional(),
+  templateId: z.string().max(40).nullable().optional(),
+}).superRefine(rangeCheck).superRefine(gradeRangeCheck);
 export const activityUpdateSchema = z.object({
   title: z.string().trim().max(80, 'عنوان خیلی بلند است.').nullable().optional(),
   description: z.string().trim().max(500, 'توضیحات خیلی بلند است.').nullable().optional(),
@@ -57,7 +86,12 @@ export const activityUpdateSchema = z.object({
   difficultyMode: z.enum(['adaptive', 'easy', 'medium', 'hard']).optional(),
   questionCount: z.number().int().min(5, 'حداقل ۵ سؤال').max(12, 'حداکثر ۱۲ سؤال').optional(),
   expiresInDays: z.number().int().min(1).max(90).optional(),
-});
+  ageMin: ageNum('حداقل سن').nullable().optional(), ageMax: ageNum('حداکثر سن').nullable().optional(),
+  gradeMin: gradeCode.nullable().optional(), gradeMax: gradeCode.nullable().optional(),
+  level: z.enum(LEVEL_CODES, { error: 'سطح فعالیت معتبر نیست.' }).nullable().optional(),
+  skills: z.array(z.enum(SKILL_CODES, { error: 'مهارت معتبر نیست.' })).max(5, 'حداکثر ۵ مهارت').nullable().optional(),
+  templateId: z.string().max(40).nullable().optional(),
+}).superRefine(rangeCheck).superRefine(gradeRangeCheck);
 export const duplicateSchema = z.object({
   title: z.string().trim().max(80).optional().nullable(),
   studentIds: z.union([z.literal('all'), z.array(z.string().uuid()).min(1)]).default('all'),

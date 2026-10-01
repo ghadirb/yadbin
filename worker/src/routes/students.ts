@@ -1,19 +1,60 @@
 import type { Env } from '../env';
-import { getOwnedClass, getOwnedStudent } from '../db/queries';
+import { effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from '../db/queries';
+import { gradeByCode } from '../education/catalog';
 import { buildStudentReport, studentHistory } from '../services/metrics';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
-import { parse, studentSchema } from '../validation/schemas';
+import { parse, studentSchema, studentUpdateSchema } from '../validation/schemas';
+
+type ProfileInput = { birthDate?: string | null; birthYear?: number | null; age?: number | null; gradeCode?: string | null; gender?: string | null; note?: string | null };
+
+/** Merge profile input over an existing row (undefined = keep, null = clear). Age is never stored: an entered age becomes a birth year. */
+function profileColumns(b: ProfileInput, old: any = {}) {
+  const k = <T,>(v: T | undefined, o: T) => (v === undefined ? o : v);
+  let birthDate: string | null = k(b.birthDate, old.birth_date ?? null);
+  let birthYear: number | null = k(b.birthYear, old.birth_year ?? null);
+  if (b.age !== undefined) { birthDate = null; birthYear = b.age === null ? null : new Date().getUTCFullYear() - b.age; }
+  else if (b.birthDate) birthYear = null; // the full date wins; no duplicate source of truth
+  else if (b.birthYear != null && b.birthDate === undefined) birthDate = null;
+  const g = b.gradeCode === undefined ? gradeByCode(old.grade_code) : gradeByCode(b.gradeCode);
+  return {
+    birthDate, birthYear, gradeCode: g?.code ?? null, gradeOrder: g?.order ?? (b.gradeCode === undefined ? old.grade_order ?? null : null),
+    gradeText: g?.label ?? (b.gradeCode === null ? null : old.grade ?? null), gender: k(b.gender, old.gender ?? null), note: k(b.note, old.teacher_note ?? null) || null,
+  };
+}
 
 export async function createStudent(req: Request, env: Env, teacherId: string) {
   const b = parse(studentSchema, await readJson(req));
-  let grade: string | null = null;
-  if (b.classId) grade = (await getOwnedClass(env.DB, teacherId, b.classId)).grade;
+  const cls = b.classId ? await getOwnedClass(env.DB, teacherId, b.classId) : null;
+  // A student without their own grade inherits the class grade.
+  const input = { ...b, gradeCode: b.gradeCode === undefined ? cls?.grade_code ?? undefined : b.gradeCode };
+  const c = profileColumns(input);
+  const gradeText = c.gradeText ?? cls?.grade ?? null;
+  const gradeOrder = c.gradeOrder ?? cls?.grade_order ?? null;
   const id = newId(), now = nowIso();
-  const stmts = [env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at) VALUES (?,?,?,?,?)').bind(id, teacherId, b.name, grade, now)];
+  const stmts = [env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at,birth_date,birth_year,grade_code,grade_order,gender,teacher_note) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(id, teacherId, b.name, gradeText, now, c.birthDate, c.birthYear, c.gradeCode, gradeOrder, c.gender, c.note)];
   if (b.classId) stmts.push(env.DB.prepare('INSERT INTO class_students (class_id,student_id,added_at) VALUES (?,?,?)').bind(b.classId, id, now));
   await env.DB.batch(stmts);
-  return json({ student: { id, name: b.name } }, 201);
+  const row = await env.DB.prepare('SELECT * FROM students WHERE id = ?').bind(id).first<any>();
+  return json({ student: studentDto(row, cls ? effectiveGradeOrder(cls) : null) }, 201);
+}
+
+/** PUT /students/:id — name + optional age/grade/gender/note. Owner only. */
+export async function updateStudent(req: Request, env: Env, teacherId: string, id: string) {
+  const old = await getOwnedStudent(env.DB, teacherId, id);
+  const b = parse(studentUpdateSchema, await readJson(req));
+  const c = profileColumns(b, old);
+  await env.DB.prepare('UPDATE students SET display_name=?, grade=?, birth_date=?, birth_year=?, grade_code=?, grade_order=?, gender=?, teacher_note=? WHERE id=? AND teacher_id=?')
+    .bind(b.name ?? old.display_name, c.gradeText, c.birthDate, c.birthYear, c.gradeCode, c.gradeOrder, c.gender, c.note, id, teacherId).run();
+  return json({ student: await studentWithClassGrade(env, teacherId, id) });
+}
+
+/** The student's profile; falls back to the grade of their active class when the student has none of their own. */
+export async function studentWithClassGrade(env: Env, teacherId: string, id: string) {
+  const s = await getOwnedStudent(env.DB, teacherId, id);
+  const cls = await env.DB.prepare('SELECT c.* FROM class_students cs JOIN classes c ON c.id = cs.class_id WHERE cs.student_id = ? AND cs.removed_at IS NULL ORDER BY cs.added_at DESC LIMIT 1').bind(id).first<any>();
+  return studentDto(s, cls ? effectiveGradeOrder(cls) : null);
 }
 
 export async function getStudent(env: Env, teacherId: string, id: string) {
