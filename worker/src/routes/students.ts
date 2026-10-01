@@ -25,7 +25,23 @@ export async function getStudentHistory(env: Env, teacherId: string, id: string)
   return json({ student: { id: s.id, name: s.display_name }, history: await studentHistory(env.DB, id) });
 }
 
-/** DELETE DATA: permanently removes the student and every result (explicit ordered deletes; no reliance on FK cascade). */
+/** CLEAR DATA (what the teacher's «حذف داده‌های دانش‌آموز» button does): erases every result, session, assignment and metric
+ *  of this student but KEEPS the student and their class membership. Explicit ordered deletes (no FK-cascade reliance).
+ *  Old activity links of this student stop working (their assignment rows are gone); activities themselves are untouched. */
+export async function clearStudentData(env: Env, teacherId: string, id: string) {
+  const s = await getOwnedStudent(env.DB, teacherId, id);
+  const ast = `(SELECT id FROM activity_students WHERE student_id = ?)`;
+  const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM activity_students WHERE student_id = ?').bind(id).first<{ n: number }>();
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM game_results WHERE session_id IN (SELECT id FROM game_sessions WHERE activity_student_id IN ${ast})`).bind(id),
+    env.DB.prepare(`DELETE FROM game_sessions WHERE activity_student_id IN ${ast}`).bind(id),
+    env.DB.prepare('DELETE FROM activity_students WHERE student_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM student_metrics WHERE student_id = ?').bind(id),
+  ]);
+  return json({ ok: true, student: { id: s.id, name: s.display_name }, clearedActivities: count?.n ?? 0 });
+}
+
+/** DELETE STUDENT: permanently removes the student and every result (explicit ordered deletes; no reliance on FK cascade). */
 export async function deleteStudent(env: Env, teacherId: string, id: string) {
   await getOwnedStudent(env.DB, teacherId, id);
   const ast = `(SELECT id FROM activity_students WHERE student_id = ?)`;

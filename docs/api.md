@@ -11,7 +11,8 @@
 | DELETE `/api/classes/:id/students/:sid` | حذف از کلاس (داده حفظ می‌شود) |
 | POST `/api/students` | `{name, classId?}` |
 | GET `/api/students/:id` | پروفایل با سه کارت عملکرد |
-| DELETE `/api/students/:id` | حذف کامل داده |
+| DELETE `/api/students/:id/data` | فقط پاک‌کردن نتایج/تاریخچه/متریک‌ها؛ **دانش‌آموز در کلاس می‌ماند** (لینک‌های قدیمی او از کار می‌افتد) |
+| DELETE `/api/students/:id` | حذف کامل خود دانش‌آموز همراه با همه‌ی داده‌ها |
 | POST `/api/activities` | `{classId, gameType, difficultyMode, questionCount 5..12, studentIds: 'all'\|[..], expiresInDays?}` → `links[]` |
 | GET `/api/activities/:id` | وضعیت + لینک هر دانش‌آموز |
 | POST `/api/activities/:id/cancel` | لغو |
@@ -46,3 +47,5 @@
 | POST `/api/play/:token/complete` | پاسخ حالا `feedback: {level, lines[]}` دارد (جمله‌ی تشویقی، بدون عدد) |
 
 **وضعیت فعالیت** (`lifecycle`): `active` فعال · `ended` پایان‌یافته (لغو، منقضی، یا همه تمام کرده‌اند) · `archived` آرشیوشده. فیلد قدیمی `status` (`active|canceled`) تغییری نکرده است.
+
+**تاریخ‌ها:** API همیشه ISO-8601 UTC برمی‌گرداند؛ تبدیل به شمسی (به وقت تهران) فقط در نمایش اپ انجام می‌شود (`core/utils/Jalali.kt`).

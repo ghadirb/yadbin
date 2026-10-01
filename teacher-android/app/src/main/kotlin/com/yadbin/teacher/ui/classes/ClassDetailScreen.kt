@@ -26,7 +26,7 @@ import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.Validators
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
-import com.yadbin.teacher.core.utils.toFa
+import com.yadbin.teacher.core.utils.jalaliFa
 import com.yadbin.teacher.domain.models.WeeklyPoint
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.ClassDetail
@@ -77,14 +77,17 @@ class ClassDetailViewModel(private val repo: Repository, val classId: String) : 
     }
 
     fun removeFromClass(studentId: String) = act("دانش‌آموز از کلاس حذف شد (اطلاعات او حفظ شد).", { repo.removeFromClass(classId, studentId) })
-    fun deleteStudentData(studentId: String) = act("دانش‌آموز و همه‌ی داده‌های او حذف شد.", { repo.deleteStudentData(studentId) })
+    /** Clears results/history only; the student stays in the class. */
+    fun clearStudentData(studentId: String) = act("داده‌های دانش‌آموز حذف شد؛ خود دانش‌آموز در کلاس باقی ماند.", { repo.clearStudentData(studentId) })
+    /** Removes the student completely, with all data. */
+    fun deleteStudent(studentId: String) = act("دانش‌آموز و همه‌ی داده‌های او حذف شد.", { repo.deleteStudentData(studentId) })
     fun deleteClass(onDone: () -> Unit) = act(null, { repo.deleteClass(classId) }, onDone)
     /** Archive keeps all data; the class moves to the archived list on the dashboard. */
     fun archive(archived: Boolean, onDone: () -> Unit = {}) =
         act(if (archived) "کلاس آرشیو شد." else "کلاس از آرشیو خارج شد.", { repo.setClassArchived(classId, archived) }, onDone)
 }
 
-private enum class StudentAction { REMOVE, DELETE }
+private enum class StudentAction { REMOVE, CLEAR_DATA, DELETE }
 
 @Composable
 fun ClassDetailScreen(
@@ -156,9 +159,12 @@ fun ClassDetailScreen(
         if (action == StudentAction.REMOVE) {
             ConfirmDialog("حذف از کلاس", "«$name» از این کلاس خارج می‌شود، ولی اطلاعات و نتایج او حفظ می‌شود.", "حذف از کلاس",
                 { pending = null; vm.removeFromClass(id) }, { pending = null })
+        } else if (action == StudentAction.CLEAR_DATA) {
+            ConfirmDialog("حذف داده‌های دانش‌آموز", "همه‌ی نتایج و تاریخچه‌ی «$name» برای همیشه پاک می‌شود، ولی خود دانش‌آموز در کلاس می‌ماند. این کار قابل بازگشت نیست.", "حذف داده‌ها",
+                { pending = null; vm.clearStudentData(id) }, { pending = null })
         } else {
-            ConfirmDialog("حذف داده‌ها", "همه‌ی اطلاعات و نتایج «$name» برای همیشه پاک می‌شود. این کار قابل بازگشت نیست.", "حذف کامل",
-                { pending = null; vm.deleteStudentData(id) }, { pending = null })
+            ConfirmDialog("حذف کامل دانش‌آموز", "«$name» همراه با همه‌ی اطلاعات و نتایجش برای همیشه حذف می‌شود. این کار قابل بازگشت نیست.", "حذف کامل",
+                { pending = null; vm.deleteStudent(id) }, { pending = null })
         }
     }
     if (showDeleteClass) {
@@ -189,13 +195,14 @@ private fun StudentsTab(
                                 Text("فعالیت‌های انجام‌شده: ${s.completedActivities.fa()}", style = MaterialTheme.typography.bodySmall)
                                 if (s.activityStateLabel.isNotBlank()) Text("وضعیت: ${s.activityStateLabel}", style = MaterialTheme.typography.bodySmall)
                                 s.averagePerformance?.let { Text("میانگین عملکرد: ${it.percentFa()}", style = MaterialTheme.typography.bodySmall) }
-                                s.lastActivityAt?.let { Text("آخرین فعالیت: ${it.take(10).toFa()}", style = MaterialTheme.typography.bodySmall) }
+                                s.lastActivityAt?.jalaliFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
                             }
                             Box {
                                 TextButton(onClick = { menu = true }) { Text("⋮") }
                                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                     DropdownMenuItem(text = { Text("حذف از کلاس") }, onClick = { menu = false; onAction(StudentAction.REMOVE, s.id, s.name) })
-                                    DropdownMenuItem(text = { Text("حذف داده‌های دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.DELETE, s.id, s.name) })
+                                    DropdownMenuItem(text = { Text("حذف داده‌های دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.CLEAR_DATA, s.id, s.name) })
+                                    DropdownMenuItem(text = { Text("حذف کامل دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.DELETE, s.id, s.name) })
                                 }
                             }
                         }
@@ -220,7 +227,7 @@ private fun ActivitiesTab(data: ClassDetail, onNew: () -> Unit, onOpen: (String)
                         Column(Modifier.padding(16.dp)) {
                             Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleSmall)
                             Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
-                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}", style = MaterialTheme.typography.bodySmall)
+                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

@@ -33,6 +33,7 @@ add('DELETE', '/api/classes/:id/students/:sid', true, (_r, env, p, t) => classes
 add('POST', '/api/students', true, (req, env, _p, t) => students.createStudent(req, env, t));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));
 add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStudentHistory(env, t, p.id));
+add('DELETE', '/api/students/:id/data', true, (_r, env, p, t) => students.clearStudentData(env, t, p.id));
 add('DELETE', '/api/students/:id', true, (_r, env, p, t) => students.deleteStudent(env, t, p.id));
 
 add('POST', '/api/activities', true, (req, env, _p, t) => activities.createActivity(req, env, t));
