@@ -6,6 +6,9 @@ import * as students from './routes/students';
 import * as activities from './routes/activities';
 import * as play from './routes/play';
 import * as reports from './routes/reports';
+import { activityDraft } from './ai/builder';
+import { dashboard } from './routes/dashboard';
+import { catalogDto } from './education/catalog';
 import { corsHeaders, HttpError, json } from './utils/http';
 
 type P = Record<string, string>;
@@ -31,11 +34,20 @@ add('POST', '/api/classes/:id/students', true, (req, env, p, t) => classes.addSt
 add('DELETE', '/api/classes/:id/students/:sid', true, (_r, env, p, t) => classes.removeStudentFromClass(env, t, p.id, p.sid));
 
 add('POST', '/api/students', true, (req, env, _p, t) => students.createStudent(req, env, t));
+add('GET', '/api/meta/education', false, () => Promise.resolve(json(catalogDto())));
+add('PUT', '/api/students/:id', true, (req, env, p, t) => students.updateStudent(req, env, t, p.id));
+add('GET', '/api/students/:id/profile', true, (_r, env, p, t) => students.getEducationalProfile(env, t, p.id));
+add('GET', '/api/students/:id/recommendations', true, (_r, env, p, t) => students.getRecommendations(env, t, p.id));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));
 add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStudentHistory(env, t, p.id));
 add('DELETE', '/api/students/:id/data', true, (_r, env, p, t) => students.clearStudentData(env, t, p.id));
 add('DELETE', '/api/students/:id', true, (_r, env, p, t) => students.deleteStudent(env, t, p.id));
 
+add('POST', '/api/ai/activity-draft', true, (req, env, _p, t) => activityDraft(req, env, t));
+add('GET', '/api/dashboard', true, (req, env, _p, t) => dashboard(req, env, t));
+add('GET', '/api/templates', true, (req) => Promise.resolve(activities.listTemplates(req)));
+add('GET', '/api/templates/:id', true, (_r, _e, p) => Promise.resolve(activities.getTemplate(p.id)));
+add('POST', '/api/activities/from-template', true, (req, env, _p, t) => activities.createFromTemplate(req, env, t));
 add('POST', '/api/activities', true, (req, env, _p, t) => activities.createActivity(req, env, t));
 add('GET', '/api/activities', true, (req, env, _p, t) => activities.listActivities(req, env, t));
 add('GET', '/api/activities/:id', true, (_r, env, p, t) => activities.getActivity(env, t, p.id));

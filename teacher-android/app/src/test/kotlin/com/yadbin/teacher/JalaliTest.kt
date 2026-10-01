@@ -2,6 +2,7 @@ package com.yadbin.teacher
 
 import com.yadbin.teacher.core.utils.Jalali
 import com.yadbin.teacher.core.utils.jalaliFa
+import com.yadbin.teacher.core.utils.jalaliDateTimeFa
 import com.yadbin.teacher.core.utils.jalaliNumericFa
 import org.junit.Assert.*
 import org.junit.Test
@@ -39,5 +40,16 @@ class JalaliTest {
         val s = "2026-09-01T10:00:00.000Z".jalaliFa()
         assertFalse(s.any { it in '0'..'9' })
         assertFalse(s.contains("۲۰۲۶"))
+    }
+
+    @Test fun date_and_time_follow_the_spec_format() {
+        // 10:00 UTC = 13:30 Tehran (UTC+3:30)
+        assertEquals("۱۰ شهریور ۱۴۰۵، ۱۳:۳۰", "2026-09-01T10:00:00.000Z".jalaliDateTimeFa())
+        // crossing midnight in Tehran moves both the date and the clock
+        assertEquals("۱۱ شهریور ۱۴۰۵، ۰۱:۳۰", "2026-09-01T22:00:00.000Z".jalaliDateTimeFa())
+        // date-only input has no time of day
+        assertEquals("۱ مهر ۱۴۰۵", "2026-09-23".jalaliDateTimeFa())
+        assertEquals("", (null as String?).jalaliDateTimeFa())
+        assertEquals("", "garbage".jalaliDateTimeFa())
     }
 }

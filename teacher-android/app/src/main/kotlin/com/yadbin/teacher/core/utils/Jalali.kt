@@ -50,6 +50,14 @@ object Jalali {
         return Triple(y, m, d)
     }
 
+    /** "HH:mm" in Tehran local time for an ISO timestamp that carries a time of day; null for date-only / unparsable input. */
+    fun tehranTime(iso: String?): String? {
+        if (iso == null) return null
+        val m = Regex("""^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})""").find(iso) ?: return null
+        val total = Math.floorMod(m.groupValues[1].toInt() * 60 + m.groupValues[2].toInt() + TEHRAN_OFFSET_MIN, 24 * 60)
+        return "${two(total / 60)}:${two(total % 60)}"
+    }
+
     /** "2026-09-01T10:00:00.000Z" (UTC) -> Jalali date in Tehran local time, or null if unparsable. */
     fun fromIso(iso: String?): Date? {
         if (iso == null || iso.length < 10) return null
@@ -75,4 +83,12 @@ fun String?.jalaliFa(): String {
 fun String?.jalaliNumericFa(): String {
     val d = Jalali.fromIso(this) ?: return ""
     return "${d.year}/${two(d.month)}/${two(d.day)}".toFa()
+}
+
+/** «۸ مهر ۱۴۰۵، ۱۲:۳۰» — Jalali date and Tehran time (date only when the input has no time). Storage stays ISO UTC. */
+fun String?.jalaliDateTimeFa(): String {
+    val date = this.jalaliFa()
+    if (date.isEmpty()) return ""
+    val time = Jalali.tehranTime(this) ?: return date
+    return "$date، $time".toFa()
 }

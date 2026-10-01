@@ -1,5 +1,6 @@
 import type { Env } from '../env';
-import { activityDto, classDto, getOwnedClass, getOwnedStudent } from '../db/queries';
+import { activityDto, classDto, effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from '../db/queries';
+import { gradeByCode } from '../education/catalog';
 import { recomputeStudentMetrics } from '../services/metrics';
 import { GAME_TYPES, MIN_SAMPLES } from '../scoring';
 import { json, readJson } from '../utils/http';
@@ -23,15 +24,16 @@ export async function listClasses(env: Env, teacherId: string, req?: Request) {
 export async function createClass(req: Request, env: Env, teacherId: string) {
   const b = parse(classSchema, await readJson(req));
   const id = newId();
-  await env.DB.prepare('INSERT INTO classes (id,teacher_id,name,grade,school_name,created_at) VALUES (?,?,?,?,?,?)')
-    .bind(id, teacherId, b.name, b.grade, b.schoolName, nowIso()).run();
+  const g = gradeByCode(b.gradeCode);
+  await env.DB.prepare('INSERT INTO classes (id,teacher_id,name,grade,school_name,created_at,grade_code,grade_order,age_min,age_max,education_stage) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(id, teacherId, b.name, b.grade ?? g!.label, b.schoolName, nowIso(), g?.code ?? null, g?.order ?? null, b.ageMin ?? null, b.ageMax ?? null, b.educationStage ?? g?.stage ?? null).run();
   return json({ class: classDto(await getOwnedClass(env.DB, teacherId, id)) }, 201);
 }
 
 export async function getClass(env: Env, teacherId: string, id: string) {
   const c = await getOwnedClass(env.DB, teacherId, id);
   const students = await env.DB.prepare(
-    `SELECT s.id, s.display_name,
+    `SELECT s.*,
        (SELECT COUNT(*) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS completed,
        (SELECT COUNT(*) FROM activity_students a JOIN activities ac ON ac.id = a.activity_id
          WHERE a.student_id = s.id AND ac.class_id = cs.class_id AND a.status != 'completed' AND ac.status = 'active' AND ac.archived_at IS NULL
@@ -54,7 +56,7 @@ export async function getClass(env: Env, teacherId: string, id: string) {
     students: students.results.map((s) => {
       const enough = (s.wn ?? 0) >= MIN_SAMPLES;
       return {
-        id: s.id, name: s.display_name, completedActivities: s.completed, openActivities: s.open_count, lastActivityAt: s.last_at,
+        ...studentDto(s, effectiveGradeOrder(c)), completedActivities: s.completed, openActivities: s.open_count, lastActivityAt: s.last_at,
         // Same rule as the student report: no numeric average until there is enough data.
         averagePerformance: enough ? Math.round((s.wsum / s.wn) * 100) / 100 : null,
         sufficientData: enough,
@@ -74,9 +76,15 @@ export async function setClassArchived(env: Env, teacherId: string, id: string, 
 }
 
 export async function updateClass(req: Request, env: Env, teacherId: string, id: string) {
-  await getOwnedClass(env.DB, teacherId, id);
+  const old = await getOwnedClass(env.DB, teacherId, id);
   const b = parse(classSchema, await readJson(req));
-  await env.DB.prepare('UPDATE classes SET name=?, grade=?, school_name=? WHERE id=? AND teacher_id=?').bind(b.name, b.grade, b.schoolName, id, teacherId).run();
+  // undefined = keep (old clients don't send the v1.2 fields), null = clear.
+  // An old client that only edits the free-text grade makes the structured code stale → clear it.
+  const staleCode = b.gradeCode === undefined && !!b.grade && b.grade !== old.grade;
+  const g = b.gradeCode === undefined ? (staleCode ? null : gradeByCode(old.grade_code)) : gradeByCode(b.gradeCode);
+  const keep = <T,>(v: T | undefined, o: T) => (v === undefined ? o : v);
+  await env.DB.prepare('UPDATE classes SET name=?, grade=?, school_name=?, grade_code=?, grade_order=?, age_min=?, age_max=?, education_stage=? WHERE id=? AND teacher_id=?')
+    .bind(b.name, b.grade ?? (b.gradeCode ? g!.label : old.grade), b.schoolName, g?.code ?? null, g?.order ?? null, keep(b.ageMin, old.age_min) ?? null, keep(b.ageMax, old.age_max) ?? null, keep(b.educationStage, old.education_stage) ?? g?.stage ?? null, id, teacherId).run();
   return json({ class: classDto(await getOwnedClass(env.DB, teacherId, id)) });
 }
 
@@ -110,13 +118,14 @@ export async function addStudentsToClass(req: Request, env: Env, teacherId: stri
   const names = splitNames(parse(bulkStudentsSchema, await readJson(req)));
   if (!names.length) return json({ error: 'validation_error', message: 'نامی وارد نشده است.' }, 400);
   if (names.length > 100) return json({ error: 'validation_error', message: 'در هر بار حداکثر ۱۰۰ نام مجاز است.' }, 400);
-  const grade = (await getOwnedClass(env.DB, teacherId, classId)).grade as string;
+  const cls = await getOwnedClass(env.DB, teacherId, classId);
+  const grade = cls.grade as string;
   const valid = names.filter((n) => n.length >= 2 && n.length <= 80);
   const now = nowIso();
   const created = valid.map((n) => ({ id: newId(), name: n }));
   if (created.length) {
     await env.DB.batch(created.flatMap((s) => [
-      env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at) VALUES (?,?,?,?,?)').bind(s.id, teacherId, s.name, grade, now),
+      env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at,grade_code,grade_order) VALUES (?,?,?,?,?,?,?)').bind(s.id, teacherId, s.name, grade, now, cls.grade_code ?? null, cls.grade_order ?? null),
       env.DB.prepare('INSERT INTO class_students (class_id,student_id,added_at) VALUES (?,?,?)').bind(classId, s.id, now),
     ]));
   }

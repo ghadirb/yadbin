@@ -22,15 +22,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yadbin.teacher.core.network.ApiException
 import com.yadbin.teacher.core.network.NetworkException
+import com.yadbin.teacher.core.utils.Edu
 import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.Validators
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.jalaliFa
+import com.yadbin.teacher.core.utils.jalaliDateTimeFa
 import com.yadbin.teacher.domain.models.WeeklyPoint
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.ClassDetail
 import com.yadbin.teacher.domain.models.ClassReport
+import com.yadbin.teacher.domain.models.ClassSummary
+import com.yadbin.teacher.domain.models.StudentRow
 import com.yadbin.teacher.ui.common.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +85,10 @@ class ClassDetailViewModel(private val repo: Repository, val classId: String) : 
     fun clearStudentData(studentId: String) = act("داده‌های دانش‌آموز حذف شد؛ خود دانش‌آموز در کلاس باقی ماند.", { repo.clearStudentData(studentId) })
     /** Removes the student completely, with all data. */
     fun deleteStudent(studentId: String) = act("دانش‌آموز و همه‌ی داده‌های او حذف شد.", { repo.deleteStudentData(studentId) })
+    fun updateClass(name: String, grade: String, school: String?, gradeCode: String?, ageMin: Int?, ageMax: Int?) =
+        act("مشخصات کلاس ذخیره شد.", { repo.updateClass(classId, name, grade, school, gradeCode, ageMin, ageMax) })
+    fun updateStudent(id: String, name: String, age: Int?, gradeCode: String?, gender: String?, note: String?) =
+        act("مشخصات دانش‌آموز ذخیره شد.", { repo.updateStudent(id, name, age, gradeCode, gender, note) })
     fun deleteClass(onDone: () -> Unit) = act(null, { repo.deleteClass(classId) }, onDone)
     /** Archive keeps all data; the class moves to the archived list on the dashboard. */
     fun archive(archived: Boolean, onDone: () -> Unit = {}) =
@@ -105,6 +113,8 @@ fun ClassDetailScreen(
     var tab by rememberSaveable { mutableStateOf(0) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var showDeleteClass by rememberSaveable { mutableStateOf(false) }
+    var showEditClass by rememberSaveable { mutableStateOf(false) }
+    var editingStudent by remember { mutableStateOf<StudentRow?>(null) }
     var pending by remember { mutableStateOf<Pair<StudentAction, Pair<String, String>>?>(null) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -125,6 +135,7 @@ fun ClassDetailScreen(
             YadbinTopBar(title, onBack, actions = {
                 val isArchived = (detail as? Ui.Ready)?.data?.cls?.archived == true
                 TextButton(onClick = { if (isArchived) vm.archive(false) else vm.archive(true, onBack) }) { Text(if (isArchived) "بازگردانی" else "آرشیو") }
+                TextButton(onClick = { showEditClass = true }) { Text("ویرایش") }
                 TextButton(onClick = { showDeleteClass = true }) { Text("حذف کلاس") }
             })
         },
@@ -136,14 +147,16 @@ fun ClassDetailScreen(
                 is Ui.Error -> ErrorBox(d.message, vm::refresh)
                 is Ui.Ready -> {
                     if (d.offline) OfflineBanner()
-                    Text("${d.data.cls.grade}${d.data.cls.schoolName?.let { " • $it" } ?: ""}", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+                    val cls = d.data.cls
+                    val sub = listOfNotNull(cls.gradeLabel ?: cls.grade, Edu.ageRange(cls.ageMin, cls.ageMax), cls.schoolName).joinToString(" • ")
+                    Text(sub, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
                     TabRow(selectedTabIndex = tab) {
                         Tab(tab == 0, { tab = 0 }, text = { Text("دانش‌آموزان") })
                         Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها") })
                         Tab(tab == 2, { tab = 2 }, text = { Text("گزارش") })
                     }
                     when (tab) {
-                        0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent) { action, id, name -> pending = action to (id to name) }
+                        0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }) { action, id, name -> pending = action to (id to name) }
                         1 -> ActivitiesTab(d.data, onNewActivity, onOpenActivity)
                         else -> ReportTab(report)
                     }
@@ -152,6 +165,20 @@ fun ClassDetailScreen(
         }
     }
 
+    if (showEditClass) {
+        (detail as? Ui.Ready)?.data?.cls?.let { cls ->
+            EditClassDialog(cls, onDismiss = { showEditClass = false }, onSubmit = { name, code, school, a, b ->
+                showEditClass = false
+                vm.updateClass(name, Edu.gradeLabel(code) ?: cls.grade, school, code, a, b)
+            })
+        }
+    }
+    editingStudent?.let { st ->
+        EditStudentDialog(st, defaultGradeCode = (detail as? Ui.Ready)?.data?.cls?.gradeCode, onDismiss = { editingStudent = null }, onSubmit = { name, age, code, gender, note ->
+            editingStudent = null
+            vm.updateStudent(st.id, name, age, code, gender, note)
+        })
+    }
     if (showAdd) AddStudentsDialog(onDismiss = { showAdd = false }, onSubmit = { text -> showAdd = false; vm.addStudents(text) })
 
     pending?.let { (action, who) ->
@@ -178,6 +205,7 @@ private fun StudentsTab(
     data: ClassDetail,
     onAdd: () -> Unit,
     onOpen: (String) -> Unit,
+    onEdit: (StudentRow) -> Unit,
     onAction: (StudentAction, String, String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -192,14 +220,17 @@ private fun StudentsTab(
                         Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(s.name, style = MaterialTheme.typography.titleSmall)
+                                val prof = listOfNotNull(s.gradeLabel, s.age?.let { (if (s.ageApproximate) "حدود " else "") + it.fa() + " ساله" }).joinToString(" • ")
+                                if (prof.isNotBlank()) Text(prof, style = MaterialTheme.typography.bodySmall)
                                 Text("فعالیت‌های انجام‌شده: ${s.completedActivities.fa()}", style = MaterialTheme.typography.bodySmall)
                                 if (s.activityStateLabel.isNotBlank()) Text("وضعیت: ${s.activityStateLabel}", style = MaterialTheme.typography.bodySmall)
                                 s.averagePerformance?.let { Text("میانگین عملکرد: ${it.percentFa()}", style = MaterialTheme.typography.bodySmall) }
-                                s.lastActivityAt?.jalaliFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
+                                s.lastActivityAt?.jalaliDateTimeFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
                             }
                             Box {
                                 TextButton(onClick = { menu = true }) { Text("⋮") }
                                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropdownMenuItem(text = { Text("ویرایش سن و پایه") }, onClick = { menu = false; onEdit(s) })
                                     DropdownMenuItem(text = { Text("حذف از کلاس") }, onClick = { menu = false; onAction(StudentAction.REMOVE, s.id, s.name) })
                                     DropdownMenuItem(text = { Text("حذف داده‌های دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.CLEAR_DATA, s.id, s.name) })
                                     DropdownMenuItem(text = { Text("حذف کامل دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.DELETE, s.id, s.name) })
@@ -227,7 +258,9 @@ private fun ActivitiesTab(data: ClassDetail, onNew: () -> Unit, onOpen: (String)
                         Column(Modifier.padding(16.dp)) {
                             Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleSmall)
                             Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
-                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                            val chips = listOfNotNull(a.levelLabel, Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels
+                            if (chips.isNotEmpty()) { Spacer(Modifier.height(4.dp)); InfoChips(chips) }
+                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -330,6 +363,74 @@ private fun AddStudentsDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit)
                 enabled = if (mode == 0) single.trim().length >= 2 else count > 0,
                 onClick = { onSubmit(if (mode == 0) single else bulk) },
             ) { Text(if (mode == 0) "افزودن" else "افزودن همه") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
+    )
+}
+
+
+@Composable
+private fun EditClassDialog(cls: ClassSummary, onDismiss: () -> Unit, onSubmit: (String, String?, String?, Int?, Int?) -> Unit) {
+    var name by rememberSaveable { mutableStateOf(cls.name) }
+    var code by rememberSaveable { mutableStateOf(cls.gradeCode) }
+    var school by rememberSaveable { mutableStateOf(cls.schoolName.orEmpty()) }
+    var ageMin by rememberSaveable { mutableStateOf(cls.ageMin?.toString().orEmpty()) }
+    var ageMax by rememberSaveable { mutableStateOf(cls.ageMax?.toString().orEmpty()) }
+    val a = parseIntFa(ageMin); val b = parseIntFa(ageMax)
+    val rangeBad = a != null && b != null && a > b
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ویرایش کلاس") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("نام کلاس") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                GradeDropdown("پایه تحصیلی", code, { code = it }, Modifier.fillMaxWidth(), noneLabel = cls.grade)
+                OutlinedTextField(school, { school = it }, label = { Text("نام مدرسه (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("بازه سنی پیشنهادی (اختیاری)", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AgeField("از سن", ageMin, { ageMin = it }, Modifier.weight(1f))
+                    AgeField("تا سن", ageMax, { ageMax = it }, Modifier.weight(1f))
+                }
+                if (rangeBad) Text("حداقل سن نباید از حداکثر سن بیشتر باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.trim().length >= 2 && !rangeBad, onClick = { onSubmit(name.trim(), code, school.trim().ifBlank { null }, a, b) }) { Text("ذخیره") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
+    )
+}
+
+@Composable
+private fun EditStudentDialog(
+    st: StudentRow,
+    defaultGradeCode: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (name: String, age: Int?, gradeCode: String?, gender: String?, note: String?) -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf(st.name) }
+    var age by rememberSaveable { mutableStateOf(st.age?.toString().orEmpty()) }
+    var code by rememberSaveable { mutableStateOf(st.gradeCode ?: defaultGradeCode) }
+    var gender by rememberSaveable { mutableStateOf(st.gender) }
+    var note by rememberSaveable { mutableStateOf(st.note.orEmpty()) }
+    val ageVal = parseIntFa(age)
+    val ageBad = age.isNotBlank() && (ageVal == null || ageVal < 3 || ageVal > 25)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("مشخصات دانش‌آموز") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("نام") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                AgeField("سن (اختیاری)", age, { age = it }, Modifier.fillMaxWidth())
+                if (ageBad) Text("سن باید بین ۳ تا ۲۵ سال باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                GradeDropdown("پایه (اختیاری)", code, { code = it }, Modifier.fillMaxWidth(), allowNone = true)
+                OptionDropdown("جنسیت (اختیاری)", listOf(com.yadbin.teacher.core.utils.CodeLabel("female", "دختر"), com.yadbin.teacher.core.utils.CodeLabel("male", "پسر")), gender, { gender = it }, Modifier.fillMaxWidth(), allowNone = true)
+                OutlinedTextField(note, { note = it.take(500) }, label = { Text("توضیحات معلم (اختیاری)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                Text("این اطلاعات فقط برای پیشنهاد فعالیت مناسب است و در صورت خالی بودن، همه‌چیز مثل قبل کار می‌کند.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.trim().length >= 2 && !ageBad, onClick = { onSubmit(name.trim(), ageVal, code, gender, note.trim().ifBlank { null }) }) { Text("ذخیره") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
     )

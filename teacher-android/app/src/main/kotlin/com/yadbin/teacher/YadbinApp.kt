@@ -26,6 +26,8 @@ class AppContainer(app: Application) {
     )
     val repository = Repository(ApiService(client), RoomCacheStore(db.cacheDao()), tokens)
     val createActivity = CreateActivityUseCase(repository)
+    /** One-shot hand-over from the AI builder / recommendations to the create-activity form (the form is then read-and-cleared). */
+    @Volatile var prefill: com.yadbin.teacher.domain.models.ActivityPrefill? = null
 }
 
 class YadbinApp : Application() {

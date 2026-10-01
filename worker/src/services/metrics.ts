@@ -1,5 +1,8 @@
 import { aggregateGame, GAME_TYPES, MIN_SAMPLES, recommend, type GameAggregate, type GameType, type StoredResult, STATUS_LABELS_FA, NO_SUGGESTION_TEXT_FA } from '../scoring';
 import { nowIso } from '../utils/ids';
+import { computeAge } from '../education/catalog';
+import { effectiveGradeOrder, studentDto } from '../db/queries';
+import { recentSummary, recommendActivities, RECOMMENDATION_NOTICE, skillIndicators } from '../education/insights';
 
 export async function loadGameResults(db: D1Database, studentId: string, game: GameType): Promise<StoredResult[]> {
   const { results } = await db.prepare(
@@ -122,12 +125,49 @@ export async function studentHistory(db: D1Database, studentId: string) {
   }));
 }
 
+/** Student row + the grade of their active class (fallback) → what the insight functions need. */
+export async function studentContext(db: D1Database, student: any) {
+  const cls = await db.prepare('SELECT c.* FROM class_students cs JOIN classes c ON c.id = cs.class_id WHERE cs.student_id = ? AND cs.removed_at IS NULL ORDER BY cs.added_at DESC LIMIT 1').bind(student.id).first<any>();
+  const profile = studentDto(student, cls ? effectiveGradeOrder(cls) : null);
+  const last = await db.prepare(
+    `SELECT a.template_id, a.game_type FROM activity_students ast JOIN activities a ON a.id = ast.activity_id
+      WHERE ast.student_id = ? AND ast.status = 'completed' ORDER BY ast.completed_at DESC LIMIT 1`,
+  ).bind(student.id).first<{ template_id: string | null; game_type: GameType }>();
+  return { profile, ctx: { gradeOrder: profile.gradeOrder, age: computeAge(student).age, lastTemplateId: last?.template_id ?? null, lastGame: last?.game_type ?? null } };
+}
+
+export async function loadAggregates(db: D1Database, studentId: string) {
+  const aggs: Partial<Record<GameType, GameAggregate>> = {};
+  for (const g of GAME_TYPES) aggs[g] = aggregateGame(g, await loadGameResults(db, studentId, g));
+  return aggs;
+}
+
+/** GET /students/:id/recommendations */
+export async function buildRecommendations(db: D1Database, student: any) {
+  const { profile, ctx } = await studentContext(db, student);
+  const recommendations = recommendActivities(await loadAggregates(db, student.id), ctx);
+  return { student: { id: student.id, name: student.display_name, age: profile.age, gradeLabel: profile.gradeLabel }, recommendations, requiresTeacherApproval: true, notice: RECOMMENDATION_NOTICE };
+}
+
+/** Educational profile (spec §9): basic info + skill indicators + a data-based summary. Indicators of activity performance — not a diagnosis. */
+export async function buildEducationalProfile(db: D1Database, student: any) {
+  const { profile } = await studentContext(db, student);
+  const aggs = await loadAggregates(db, student.id);
+  const done = await db.prepare(`SELECT COUNT(*) AS n, MAX(completed_at) AS last FROM activity_students WHERE student_id = ? AND status = 'completed'`).bind(student.id).first<{ n: number; last: string | null }>();
+  return {
+    student: profile, completedActivities: done?.n ?? 0, lastActivityAt: done?.last ?? null,
+    skills: skillIndicators(aggs), summary: recentSummary(aggs),
+    notice: 'این موارد «شاخص عملکرد در فعالیت‌ها» است؛ تشخیص پزشکی یا روان‌شناختی نیست. تصمیم نهایی با معلم است.',
+  };
+}
+
 export async function buildStudentReport(db: D1Database, student: { id: string; display_name: string }) {
   const aggs: Partial<Record<GameType, GameAggregate>> = {};
   for (const g of GAME_TYPES) aggs[g] = aggregateGame(g, await loadGameResults(db, student.id, g));
   const done = await db.prepare(
     `SELECT COUNT(*) AS n, MAX(completed_at) AS last FROM activity_students WHERE student_id = ? AND status = 'completed'`,
   ).bind(student.id).first<{ n: number; last: string | null }>();
+  const sctx = await studentContext(db, student);
   const suggestions = recommend(aggs).map((s) => ({ ...s, label: 'پیشنهاد سیستم', gameName: GAME_NAMES[s.gameType] }));
   return {
     student: { id: student.id, name: student.display_name },
@@ -137,6 +177,9 @@ export async function buildStudentReport(db: D1Database, student: { id: string; 
     skills: GAME_TYPES.map((g) => skillCard(aggs[g]!)),
     suggestions,
     suggestionFallback: suggestions.length ? null : NO_SUGGESTION_TEXT_FA,
+    // v1.2: age/grade profile, skill indicators, data-based summary and the next-activity suggestion (teacher approves everything).
+    profile: sctx.profile, skillIndicators: skillIndicators(aggs), summaryText: recentSummary(aggs).text,
+    nextActivity: recommendActivities(aggs, sctx.ctx)[0] ?? null,
     notice: 'همه‌ی نتایج فقط «عملکرد مشاهده‌شده در فعالیت‌های این سیستم» است و تشخیص یا رتبه‌بندی نیست. تصمیم نهایی با معلم است.',
   };
 }

@@ -56,8 +56,10 @@ class Repository(
     suspend fun activity(id: String): Loaded<ActivityDetail> = cached("activity:$id", ActivityDetail.serializer()) { api.activity(id) }
 
     // ---- writes (always need the network) ---------------------------------------------------
-    suspend fun createClass(name: String, grade: String, school: String?): ClassSummary = api.createClass(name, grade, school).cls
-    suspend fun updateClass(id: String, name: String, grade: String, school: String?): ClassSummary = api.updateClass(id, name, grade, school).cls
+    suspend fun createClass(name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassSummary =
+        api.createClass(name, grade, school, gradeCode, ageMin, ageMax).cls
+    suspend fun updateClass(id: String, name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassSummary =
+        api.updateClass(id, name, grade, school, gradeCode, ageMin, ageMax).cls
     suspend fun deleteClass(id: String) = api.deleteClass(id)
     suspend fun addStudents(classId: String, text: String): AddStudentsResponse = api.addStudents(classId, text)
     suspend fun removeFromClass(classId: String, studentId: String) = api.removeFromClass(classId, studentId)
@@ -71,6 +73,16 @@ class Repository(
     suspend fun duplicateActivity(id: String): ActivityCreated = api.duplicateActivity(id)
     suspend fun setActivityArchived(id: String, archived: Boolean): ActivityDetail = api.setActivityArchived(id, archived)
     suspend fun regenerateLink(activityId: String, studentId: String): LinksResponse = api.regenerateLink(activityId, studentId)
+
+    // ---- v1.2 ----
+    suspend fun studentProfile(id: String): Loaded<EducationalProfile> = cached("profile:$id", EducationalProfile.serializer()) { api.studentProfile(id) }
+    suspend fun recommendations(id: String): Loaded<RecommendationsResponse> = cached("recs:$id", RecommendationsResponse.serializer()) { api.recommendations(id) }
+    suspend fun templates(): Loaded<TemplatesResponse> = cached("templates", TemplatesResponse.serializer()) { api.templates() }
+    suspend fun dashboard(query: String = ""): Loaded<DashboardResponse> = cached("dashboard:$query", DashboardResponse.serializer()) { api.dashboard(query) }
+    suspend fun updateStudent(id: String, name: String, age: Int?, gradeCode: String?, gender: String?, note: String?): EduStudent =
+        api.updateStudent(id, name, age, gradeCode, gender, note).student
+    suspend fun aiDraft(prompt: String, classId: String?, studentId: String?): DraftResponse = api.aiDraft(prompt, classId, studentId)
+    suspend fun createActivityFromSpec(spec: ActivitySpec): ActivityCreated = api.createActivityV12(spec)
 
     private suspend fun <T> cached(key: String, serializer: KSerializer<T>, fetch: suspend () -> T): Loaded<T> {
         try {

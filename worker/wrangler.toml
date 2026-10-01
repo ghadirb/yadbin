@@ -23,3 +23,8 @@ PLAY_BASE_URL = "https://yadbin-api.ghadir-baraty3.workers.dev"
 directory = "../student-web/dist"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
+
+# Optional (v1.2 AI Activity Builder): uncomment to let the builder use Cloudflare Workers AI.
+# Without it the builder still works with its built-in rule engine. The model only ever returns a DRAFT.
+# [ai]
+# binding = "AI"
