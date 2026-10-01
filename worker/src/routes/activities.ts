@@ -3,6 +3,7 @@ import { activityDto, effectiveGradeOrder, GAME_NAMES_FA, getOwnedActivity, getO
 import { activityFit, computeAge, GRADES, gradeByCode, inferGradeOrder, type Fit } from '../education/catalog';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, newPlayToken, nowIso } from '../utils/ids';
+import { filterTemplates, templateById, templateDto } from '../education/templates';
 import { activitySchema, activityUpdateSchema, duplicateSchema, parse, regenerateSchema } from '../validation/schemas';
 
 const playUrl = (env: Env, token: string) => `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/play/${token}`;
@@ -75,7 +76,34 @@ async function insertActivity(env: Env, teacherId: string, a: NewActivity, chose
 }
 
 export async function createActivity(req: Request, env: Env, teacherId: string) {
-  const b = parse(activitySchema, await readJson(req));
+  return createFromBody(env, teacherId, await readJson(req));
+}
+
+/** GET /templates?grade=&skill=&level=&gameType= */
+export function listTemplates(req: Request) {
+  const sp = new URL(req.url).searchParams;
+  return json({ templates: filterTemplates({ grade: sp.get('grade'), skill: sp.get('skill'), level: sp.get('level'), gameType: sp.get('gameType') }).map(templateDto) });
+}
+export function getTemplate(id: string) {
+  const t = templateById(id);
+  if (!t) throw new HttpError(404, 'not_found', 'قالب یافت نشد.');
+  return json({ template: templateDto(t) });
+}
+
+/** POST /activities/from-template — template defaults, overridden by any field the teacher sends (nothing is locked). */
+export async function createFromTemplate(req: Request, env: Env, teacherId: string) {
+  const raw = (await readJson(req)) as Record<string, unknown>;
+  const t = templateById(String(raw?.templateId ?? ''));
+  if (!t) throw new HttpError(404, 'not_found', 'قالب یافت نشد.');
+  const defaults = { gameType: t.gameType, difficultyMode: t.difficultyMode, questionCount: t.questionCount, suggestedMinutes: t.suggestedMinutes, title: t.title, description: t.description,
+    level: t.level, skills: t.skills, gradeMin: t.gradeMin, gradeMax: t.gradeMax, ageMin: t.ageMin, ageMax: t.ageMax };
+  const merged = { ...defaults, ...Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined)) };
+  return createFromBody(env, teacherId, merged);
+}
+
+async function createFromBody(env: Env, teacherId: string, body: unknown) {
+  const b = parse(activitySchema, body);
+  if (b.templateId && !templateById(b.templateId)) throw new HttpError(400, 'validation_error', 'قالب معتبر نیست.');
   await assertClassOpen(env, teacherId, b.classId);
   const chosen = await chooseStudents(env, teacherId, b.classId, b.studentIds);
   return json(await insertActivity(env, teacherId, b, chosen), 201);

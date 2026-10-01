@@ -40,6 +40,9 @@ add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStu
 add('DELETE', '/api/students/:id/data', true, (_r, env, p, t) => students.clearStudentData(env, t, p.id));
 add('DELETE', '/api/students/:id', true, (_r, env, p, t) => students.deleteStudent(env, t, p.id));
 
+add('GET', '/api/templates', true, (req) => Promise.resolve(activities.listTemplates(req)));
+add('GET', '/api/templates/:id', true, (_r, _e, p) => Promise.resolve(activities.getTemplate(p.id)));
+add('POST', '/api/activities/from-template', true, (req, env, _p, t) => activities.createFromTemplate(req, env, t));
 add('POST', '/api/activities', true, (req, env, _p, t) => activities.createActivity(req, env, t));
 add('GET', '/api/activities', true, (req, env, _p, t) => activities.listActivities(req, env, t));
 add('GET', '/api/activities/:id', true, (_r, env, p, t) => activities.getActivity(env, t, p.id));
