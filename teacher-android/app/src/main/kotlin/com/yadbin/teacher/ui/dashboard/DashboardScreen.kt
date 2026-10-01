@@ -11,7 +11,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -19,7 +21,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.data.repository.Repository
+import com.yadbin.teacher.core.network.ApiException
+import com.yadbin.teacher.core.network.NetworkException
+import com.yadbin.teacher.core.utils.Edu
+import com.yadbin.teacher.domain.models.ClassSummary
 import com.yadbin.teacher.domain.models.ClassesResponse
+import com.yadbin.teacher.domain.models.DashTotals
 import com.yadbin.teacher.ui.common.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +36,8 @@ import kotlinx.coroutines.launch
 class DashboardViewModel(private val repo: Repository) : ViewModel() {
     private val _state = MutableStateFlow<Ui<ClassesResponse>>(Ui.Loading)
     val state: StateFlow<Ui<ClassesResponse>> = _state.asStateFlow()
+    private val _totals = MutableStateFlow<DashTotals?>(null)
+    val totals: StateFlow<DashTotals?> = _totals.asStateFlow()
     private var archived = false
     init { refresh() }
 
@@ -38,6 +47,9 @@ class DashboardViewModel(private val repo: Repository) : ViewModel() {
         viewModelScope.launch {
             if (_state.value !is Ui.Ready) _state.value = Ui.Loading
             _state.value = loadUi { if (archived) repo.archivedClasses() else repo.classes() }
+            if (!archived) {
+                try { _totals.value = repo.dashboard().data.totals } catch (e: ApiException) { } catch (e: NetworkException) { }
+            }
         }
     }
 
@@ -49,6 +61,8 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
     val c = LocalContainer.current
     val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val totals by vm.totals.collectAsStateWithLifecycle()
+    val teacherName = remember { c.tokens.teacherName()?.takeIf { it.isNotBlank() } }
     var archivedTab by rememberSaveable { mutableStateOf(false) }
 
     // refresh when coming back from Create Class / Class Detail
@@ -89,21 +103,66 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                         else EmptyState("هنوز کلاسی ایجاد نکرده‌اید.", "ساخت اولین کلاس", onCreateClass)
                     } else {
                         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(s.data.classes, key = { it.id }) { cls ->
-                                Card(Modifier.fillMaxWidth().clickable { onOpenClass(cls.id) }) {
-                                    Column(Modifier.padding(16.dp)) {
-                                        Text(cls.name, style = MaterialTheme.typography.titleMedium)
-                                        Text(listOfNotNull(cls.gradeLabel ?: cls.grade, com.yadbin.teacher.core.utils.Edu.ageRange(cls.ageMin, cls.ageMax)).joinToString(" • "), style = MaterialTheme.typography.bodyMedium)
-                                        Spacer(Modifier.height(8.dp))
-                                        Text("دانش‌آموزان: ${cls.studentCount.fa()}   •   فعالیت‌های اخیر: ${cls.recentActivityCount.fa()}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
+                            if (!archivedTab) {
+                                item { GreetingHeader(teacherName, totals) }
+                                item { SummaryRow(s.data.classes, totals) }
+                                item { SectionTitle("کلاس‌های من") }
                             }
+                            items(s.data.classes, key = { it.id }) { cls -> ClassCard(cls, onOpenClass) }
                             item { Spacer(Modifier.height(72.dp)) }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** «سلام، خانم احمدی 👋» + one calm status line (pending = assigned − completed student tasks). */
+@Composable
+private fun GreetingHeader(name: String?, totals: DashTotals?) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Text(if (name != null) "سلام، $name 👋" else "سلام 👋", style = MaterialTheme.typography.headlineSmall)
+        val pending = totals?.let { (it.assigned - it.completed).coerceAtLeast(0) }
+        val line = when {
+            pending == null -> "خوش آمدید."
+            pending > 0 -> "امروز ${pending.fa()} تکلیف دانش‌آموزی در انتظار انجام است."
+            else -> "فعلاً تکلیف باز یا در انتظاری وجود ندارد."
+        }
+        Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Four summary cards. Classes/students come from the class list; activities from the dashboard totals when available. */
+@Composable
+private fun SummaryRow(classes: List<ClassSummary>, totals: DashTotals?) {
+    val dash = "—"
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SummaryCard(classes.size.fa(), "کلاس", Modifier.weight(1f))
+            SummaryCard(classes.sumOf { it.studentCount }.fa(), "دانش‌آموز", Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SummaryCard(totals?.activities?.fa() ?: dash, "فعالیت", Modifier.weight(1f))
+            SummaryCard(totals?.completed?.fa() ?: dash, "انجام‌شده", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ClassCard(cls: ClassSummary, onOpen: (String) -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable { onOpen(cls.id) }, shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(1.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(cls.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val sub = listOfNotNull(cls.gradeLabel ?: cls.grade, Edu.ageRange(cls.ageMin, cls.ageMax)).joinToString(" • ")
+            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusChip("${cls.studentCount.fa()} دانش‌آموز", Tone.Info)
+                StatusChip("${cls.recentActivityCount.fa()} فعالیت اخیر", Tone.Success)
+            }
+            Spacer(Modifier.height(10.dp))
+            FilledTonalButton(onClick = { onOpen(cls.id) }, modifier = Modifier.fillMaxWidth()) { Text("ورود به کلاس") }
         }
     }
 }

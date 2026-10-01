@@ -79,7 +79,7 @@ class ApiClient(
 
     private fun toApiException(status: Int, text: String): ApiException {
         val parsed = try { json.decodeFromString(ErrorBody.serializer(), text) } catch (e: Exception) { null }
-        val message = parsed?.message?.takeIf { it.isNotBlank() } ?: "خطای ${status} از سرور."
+        val message = parsed?.message?.takeIf { it.isNotBlank() } ?: "دریافت اطلاعات با مشکل مواجه شد. لطفاً دوباره تلاش کنید."
         return ApiException(parsed?.error ?: "http_$status", message, status)
     }
 }

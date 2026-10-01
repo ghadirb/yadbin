@@ -21,3 +21,10 @@ app/src/main/kotlin/com/yadbin/teacher/
 ## تست
 `gradle testDebugUnitTest` (JVM): قرارداد API با MockWebServer (هدر Authorization، خطاهای فارسی، ۴۰۱، قطع شبکه)، اعتبارسنجی موبایل/رمز/افزودن سریع، fallback آفلاین Repository، پارس JSON گزارش‌ها، QR، و نبودن واژه‌های تشخیصی در برچسب‌ها.
 تست UI روی دستگاه (Espresso/Compose test) هنوز نوشته نشده است.
+
+## UI v1.2 — مرحله ۲ (سیستم طراحی + داشبورد)
+- فونت فارسی Vazirmatn (مجوز OFL) در `res/font` و اعمال‌شده روی کل Typography (`ui/theme/Theme.kt`).
+- واژگان طراحی محدود در `ui/common/Design.kt`: `Tone` (موفقیت/هشدار/خطا/اطلاعات)، `SummaryCard`، `SectionTitle`، `SkeletonBlock/List`، `EmptyIllustration`.
+- Loading همه صفحات به Skeleton تبدیل شد (`LoadingBox`)؛ خطا با پیام دوستانه + «تلاش مجدد»؛ خطای فنی مثل «خطای 500» دیگر نمایش داده نمی‌شود.
+- داشبورد: سلام + خلاصه وضعیت، ۴ کارت خلاصه، کارت کلاس با «ورود به کلاس». آمار فعالیت از `/dashboard` به‌صورت best-effort (آفلاین از کش؛ نبودنش لیست کلاس‌ها را خراب نمی‌کند).
+- صفحه کلاس: هدر با نام/مشخصات/چیپ‌های آمار + تب‌های بولد‌شونده.

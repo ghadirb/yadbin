@@ -50,16 +50,18 @@ suspend fun <T> loadUi(block: suspend () -> Loaded<T>): Ui<T> = try {
 
 @Composable
 fun LoadingBox(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+    SkeletonList(modifier = modifier)
 }
 
 @Composable
 fun ErrorBox(message: String, onRetry: (() -> Unit)?) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(message, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
+        Text("📡", style = MaterialTheme.typography.displaySmall)
+        Spacer(Modifier.height(8.dp))
+        Text(message, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
         if (onRetry != null) {
             Spacer(Modifier.height(12.dp))
-            Button(onClick = onRetry) { Text("تلاش دوباره") }
+            Button(onClick = onRetry) { Text("تلاش مجدد") }
         }
     }
 }
@@ -67,7 +69,8 @@ fun ErrorBox(message: String, onRetry: (() -> Unit)?) {
 @Composable
 fun EmptyState(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null, illustration: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (illustration != null) { illustration(); Spacer(Modifier.height(12.dp)) }
+        if (illustration != null) illustration() else EmptyIllustration()
+        Spacer(Modifier.height(12.dp))
         Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(12.dp))

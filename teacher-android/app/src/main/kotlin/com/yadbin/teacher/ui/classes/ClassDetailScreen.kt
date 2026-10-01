@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
@@ -161,11 +162,19 @@ fun ClassDetailScreen(
                     if (d.offline) OfflineBanner()
                     val cls = d.data.cls
                     val sub = listOfNotNull(cls.gradeLabel ?: cls.grade, Edu.ageRange(cls.ageMin, cls.ageMax), cls.schoolName).joinToString(" • ")
-                    Text(sub, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
-                    TabRow(selectedTabIndex = tab) {
-                        Tab(tab == 0, { tab = 0 }, text = { Text("دانش‌آموزان") })
-                        Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها") })
-                        Tab(tab == 2, { tab = 2 }, text = { Text("گزارش") })
+                    val activeCount = d.data.activities.count { it.lifecycle == "active" }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(cls.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StatusChip("${d.data.students.size.fa()} دانش‌آموز", Tone.Info)
+                            StatusChip("${activeCount.fa()} فعالیت فعال", if (activeCount > 0) Tone.Success else Tone.Info)
+                        }
+                    }
+                    TabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
+                        Tab(tab == 0, { tab = 0 }, text = { Text("دانش‌آموزان", fontWeight = if (tab == 0) FontWeight.Bold else FontWeight.Normal) })
+                        Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها", fontWeight = if (tab == 1) FontWeight.Bold else FontWeight.Normal) })
+                        Tab(tab == 2, { tab = 2 }, text = { Text("گزارش", fontWeight = if (tab == 2) FontWeight.Bold else FontWeight.Normal) })
                     }
                     when (tab) {
                         0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }, { avatarFor = it }) { action, id, name -> pending = action to (id to name) }
