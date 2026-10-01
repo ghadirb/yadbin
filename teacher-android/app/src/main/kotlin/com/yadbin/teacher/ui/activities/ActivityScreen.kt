@@ -108,6 +108,7 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                         a.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                         Text(listOfNotNull(a.createdAt.jalaliFa().takeIf { it.isNotBlank() }?.let { "ساخته‌شده: $it" }, a.expiresAt.jalaliFa().takeIf { it.isNotBlank() }?.let { "انقضا: $it" }).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
                         a.suggestedMinutes?.let { Text("زمان پیشنهادی: ${it.fa()} دقیقه", style = MaterialTheme.typography.bodySmall) }
+                        InfoChips(listOfNotNull(a.levelLabel, com.yadbin.teacher.core.utils.Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), com.yadbin.teacher.core.utils.Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels)
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = { showEdit = true }) { Text("ویرایش") }
                             TextButton(onClick = { vm.duplicate(onOpenActivity) }) { Text("ساخت نسخه جدید") }
@@ -123,6 +124,10 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(st.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                                         AssistChip(onClick = {}, label = { Text(Labels.studentStatus(st.status)) })
+                                    }
+                                    if (a.hasSuitabilityRange) {
+                                        FitBadge(st.fit, st.fitLabel)
+                                        st.fitReasons.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         TextButton(onClick = { copyLink(ctx, st.url); }) { Text("کپی لینک") }

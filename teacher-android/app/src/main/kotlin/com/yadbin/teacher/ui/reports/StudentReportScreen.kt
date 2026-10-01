@@ -23,6 +23,11 @@ import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.secondsFa
 import com.yadbin.teacher.core.utils.jalaliFa
 import com.yadbin.teacher.domain.models.HistoryItem
+import com.yadbin.teacher.domain.models.ActivityPrefill
+import com.yadbin.teacher.domain.models.EducationalProfile
+import com.yadbin.teacher.domain.models.Recommendation
+import com.yadbin.teacher.domain.models.RecommendationsResponse
+import com.yadbin.teacher.core.utils.Edu
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.SeriesPoint
 import com.yadbin.teacher.domain.models.SkillCard
@@ -39,6 +44,10 @@ class StudentReportViewModel(private val repo: Repository, private val id: Strin
     val state: StateFlow<Ui<StudentReport>> = _state.asStateFlow()
     private val _history = MutableStateFlow<List<HistoryItem>>(emptyList())
     val history: StateFlow<List<HistoryItem>> = _history.asStateFlow()
+    private val _profile = MutableStateFlow<EducationalProfile?>(null)
+    val profile: StateFlow<EducationalProfile?> = _profile.asStateFlow()
+    private val _recs = MutableStateFlow<RecommendationsResponse?>(null)
+    val recs: StateFlow<RecommendationsResponse?> = _recs.asStateFlow()
     init { refresh() }
     fun refresh() {
         viewModelScope.launch {
@@ -46,16 +55,21 @@ class StudentReportViewModel(private val repo: Repository, private val id: Strin
             _state.value = loadUi { repo.studentReport(id) }
             // History is a bonus section: a failure here must not hide the report.
             try { _history.value = repo.studentHistory(id).data.history } catch (e: Exception) { /* keep previous */ }
+            // v1.2 sections are optional too (older server / offline): the classic report always stays visible.
+            try { _profile.value = repo.studentProfile(id).data } catch (e: Exception) { /* keep previous */ }
+            try { _recs.value = repo.recommendations(id).data } catch (e: Exception) { /* keep previous */ }
         }
     }
 }
 
 @Composable
-fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
+fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onAiBuilder: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: StudentReportViewModel = viewModel(key = "student-$studentId", factory = VmFactory { StudentReportViewModel(c.repository, studentId) })
     val state by vm.state.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val profile by vm.profile.collectAsStateWithLifecycle()
+    val recs by vm.recs.collectAsStateWithLifecycle()
     val title = (state as? Ui.Ready)?.data?.student?.name ?: "گزارش دانش‌آموز"
 
     Scaffold(topBar = { YadbinTopBar(title, onBack) }) { pad ->
@@ -65,7 +79,7 @@ fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
                 is Ui.Error -> ErrorBox(s.message, vm::refresh)
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
-                    ReportContent(s.data, history)
+                    ReportContent(s.data, history, profile, recs, classId != null, { r -> c.prefill = ActivityPrefill(templateId = r.templateId, gameType = r.gameType, difficultyMode = r.difficultyMode, level = r.level, skills = listOf(r.skill), studentId = studentId); onCreateActivity() }, onAiBuilder)
                 }
             }
         }
@@ -73,8 +87,12 @@ fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ReportContent(r: StudentReport, history: List<HistoryItem>) {
+private fun ReportContent(
+    r: StudentReport, history: List<HistoryItem>, profile: EducationalProfile?, recs: RecommendationsResponse?,
+    canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit,
+) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        profile?.let { ProfileCard(it) }
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
         if (r.summary.sessions > 0) {
@@ -109,6 +127,12 @@ private fun ReportContent(r: StudentReport, history: List<HistoryItem>) {
             }
         }
 
+        if (recs != null && recs.recommendations.isNotEmpty()) {
+            Text("پیشنهاد فعالیت بعدی", style = MaterialTheme.typography.titleMedium)
+            recs.recommendations.forEach { RecommendationCard(it, canCreate, onUseRecommendation) }
+            NoticeText(recs.notice.ifBlank { "این‌ها فقط پیشنهاد هستند؛ فعالیت بدون ویرایش و تأیید شما ساخته نمی‌شود." })
+            if (canCreate) OutlinedButton(onClick = onAiBuilder, modifier = Modifier.fillMaxWidth()) { Text("ساخت فعالیت با هوش مصنوعی برای این دانش‌آموز") }
+        }
         Text("پیشنهاد سیستم", style = MaterialTheme.typography.titleMedium)
         if (r.suggestions.isEmpty()) {
             Text(r.suggestionFallback ?: "برای ارائه پیشنهاد، فعالیت‌های بیشتری لازم است.", style = MaterialTheme.typography.bodyMedium)
@@ -190,4 +214,47 @@ private fun TrendChart(series: List<SeriesPoint>) {
         pts.forEachIndexed { i, p -> drawCircle(line, radius = 7f, center = Offset(px(i), py(p.second))) }
     }
     Text("جلسه ۱ تا ${pts.size.fa()}", style = MaterialTheme.typography.labelSmall)
+}
+
+
+/** Educational profile: performance INDICATORS from activities - never a medical or psychological assessment. */
+@Composable
+private fun ProfileCard(p: EducationalProfile) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("پروفایل آموزشی", style = MaterialTheme.typography.titleMedium)
+            val basic = listOfNotNull(
+                p.student.gradeLabel?.let { "پایه: $it" },
+                p.student.age?.let { "سن: " + (if (p.student.ageApproximate) "حدود " else "") + it.fa() },
+                "فعالیت‌ها: ${p.completedActivities.fa()}",
+                p.lastActivityAt.jalaliFa().takeIf { it.isNotBlank() }?.let { "آخرین فعالیت: $it" },
+            )
+            Text(basic.joinToString(" • "), style = MaterialTheme.typography.bodyMedium)
+            if (p.student.gradeLabel == null && p.student.age == null) Text("سن و پایه ثبت نشده است؛ از منوی دانش‌آموز در صفحه‌ی کلاس می‌توانید آن را اضافه کنید.", style = MaterialTheme.typography.bodySmall)
+            p.skills.forEach { k ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(k.label); Text(k.statusLabel.ifBlank { Edu.performanceLabel(k.status) }, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            if (p.summary.text.isNotBlank()) {
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                    Text(p.summary.text, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            NoticeText(p.notice)
+        }
+    }
+}
+
+@Composable
+private fun RecommendationCard(r: Recommendation, canCreate: Boolean, onUse: (Recommendation) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(r.text, style = MaterialTheme.typography.titleSmall)
+            if (r.reason.isNotBlank()) Text(r.reason, style = MaterialTheme.typography.bodySmall)
+            InfoChips(listOfNotNull(Labels.game(r.gameType), r.levelLabel.ifBlank { Edu.levelLabel(r.level) }, r.templateTitle))
+            FitBadge(r.fit)
+            if (canCreate) TextButton(onClick = { onUse(r) }) { Text("ویرایش و ساخت این فعالیت") }
+        }
+    }
 }

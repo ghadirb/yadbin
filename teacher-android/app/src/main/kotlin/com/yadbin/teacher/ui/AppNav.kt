@@ -6,10 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
+import androidx.navigation.NavType
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
 import com.yadbin.teacher.ui.activities.ActivityScreen
+import com.yadbin.teacher.ui.activities.AiBuilderScreen
 import com.yadbin.teacher.ui.activities.CreateActivityScreen
+import com.yadbin.teacher.ui.dashboard.OverviewScreen
 import com.yadbin.teacher.ui.auth.LoginScreen
 import com.yadbin.teacher.ui.auth.RegisterScreen
 import com.yadbin.teacher.ui.auth.ResetPasswordScreen
@@ -30,7 +34,9 @@ object Routes {
     const val CLASS = "class/{id}"
     const val NEW_ACTIVITY = "newActivity/{classId}"
     const val ACTIVITY = "activity/{id}"
-    const val STUDENT = "student/{id}"
+    const val STUDENT = "student/{id}?classId={classId}"
+    const val AI_BUILDER = "aiBuilder/{classId}?studentId={studentId}"
+    const val OVERVIEW = "overview"
 }
 
 private fun NavHostController.toLoginClearingStack() {
@@ -75,6 +81,7 @@ fun AppNav() {
             DashboardScreen(
                 onOpenClass = { nav.navigate("class/$it") },
                 onCreateClass = { nav.navigate(Routes.CREATE_CLASS) },
+                onOverview = { nav.navigate(Routes.OVERVIEW) },
                 onLoggedOut = { nav.toLoginClearingStack() },
             )
         }
@@ -91,7 +98,7 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
                 onNewActivity = { nav.navigate("newActivity/$id") },
                 onOpenActivity = { nav.navigate("activity/$it") },
-                onOpenStudent = { nav.navigate("student/$it") },
+                onOpenStudent = { nav.navigate("student/$it?classId=$id") },
             )
         }
         composable(Routes.NEW_ACTIVITY) { e ->
@@ -100,15 +107,38 @@ fun AppNav() {
                 classId = classId,
                 onBack = { nav.popBackStack() },
                 onCreated = { activityId -> nav.navigate("activity/$activityId") { popUpTo(Routes.NEW_ACTIVITY) { inclusive = true } } },
+                onAiBuilder = { nav.navigate("aiBuilder/$classId") },
             )
+        }
+        composable(
+            Routes.AI_BUILDER,
+            arguments = listOf(navArgument("studentId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { e ->
+            val classId = e.arguments?.getString("classId") ?: return@composable
+            AiBuilderScreen(
+                classId = classId, studentId = e.arguments?.getString("studentId"), onBack = { nav.popBackStack() },
+                // the draft is handed to the (editable) create form; the AI screen leaves the stack so Back from the form returns to the class
+                onUseDraft = { nav.navigate("newActivity/$classId") { popUpTo(Routes.AI_BUILDER) { inclusive = true } } },
+            )
+        }
+        composable(Routes.OVERVIEW) {
+            OverviewScreen(onBack = { nav.popBackStack() }, onOpenClass = { nav.navigate("class/$it") })
         }
         composable(Routes.ACTIVITY) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
             ActivityScreen(activityId = id, onBack = { nav.popBackStack() }, onOpenStudent = { nav.navigate("student/$it") }, onOpenActivity = { nav.navigate("activity/$it") })
         }
-        composable(Routes.STUDENT) { e ->
+        composable(
+            Routes.STUDENT,
+            arguments = listOf(navArgument("classId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
-            StudentReportScreen(studentId = id, onBack = { nav.popBackStack() })
+            val classId = e.arguments?.getString("classId")
+            StudentReportScreen(
+                studentId = id, classId = classId, onBack = { nav.popBackStack() },
+                onCreateActivity = { if (classId != null) nav.navigate("newActivity/$classId") },
+                onAiBuilder = { if (classId != null) nav.navigate("aiBuilder/$classId?studentId=$id") },
+            )
         }
     }
 }

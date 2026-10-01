@@ -45,7 +45,7 @@ class DashboardViewModel(private val repo: Repository) : ViewModel() {
 }
 
 @Composable
-fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit) {
+fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit, onOverview: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -62,6 +62,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
     Scaffold(
         topBar = {
             YadbinTopBar("داشبورد", actions = {
+                TextButton(onClick = onOverview) { Text("نمای کلی") }
                 TextButton(onClick = { vm.logout(onLoggedOut) }) { Text("خروج") }
             })
         },
@@ -92,7 +93,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                                 Card(Modifier.fillMaxWidth().clickable { onOpenClass(cls.id) }) {
                                     Column(Modifier.padding(16.dp)) {
                                         Text(cls.name, style = MaterialTheme.typography.titleMedium)
-                                        Text(cls.grade, style = MaterialTheme.typography.bodyMedium)
+                                        Text(listOfNotNull(cls.gradeLabel ?: cls.grade, com.yadbin.teacher.core.utils.Edu.ageRange(cls.ageMin, cls.ageMax)).joinToString(" • "), style = MaterialTheme.typography.bodyMedium)
                                         Spacer(Modifier.height(8.dp))
                                         Text("دانش‌آموزان: ${cls.studentCount.fa()}   •   فعالیت‌های اخیر: ${cls.recentActivityCount.fa()}", style = MaterialTheme.typography.bodySmall)
                                     }

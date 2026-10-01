@@ -163,3 +163,26 @@ data class ActivitySpec(
     val ageMax: Int? = null,
     val templateId: String? = null,
 )
+
+/** Values handed from the AI builder / a recommendation to the create-activity form. The form stays fully editable: the teacher approves. */
+data class ActivityPrefill(
+    val templateId: String? = null,
+    val gameType: String? = null,
+    val difficultyMode: String? = null,
+    val questionCount: Int? = null,
+    val title: String? = null,
+    val description: String? = null,
+    val suggestedMinutes: Int? = null,
+    val level: String? = null,
+    val skills: List<String> = emptyList(),
+    val gradeMin: String? = null,
+    val gradeMax: String? = null,
+    val ageMin: Int? = null,
+    val ageMax: Int? = null,
+    val studentId: String? = null,
+)
+
+fun ActivityDraft.toPrefill() = ActivityPrefill(
+    templateId = templateId, gameType = gameType, difficultyMode = difficultyMode, questionCount = questionCount, title = title,
+    description = description, suggestedMinutes = suggestedMinutes, level = level, skills = skills, gradeMin = gradeMin, gradeMax = gradeMax, ageMin = ageMin, ageMax = ageMax,
+)
