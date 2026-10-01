@@ -98,7 +98,7 @@ private fun ReportContent(
     var editAvatar by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         StudentHeader(r, profile, onAvatar = { editAvatar = true })
-        if (editAvatar) AvatarEditorDialog(r.student.id, r.student.name) { editAvatar = false }
+        if (editAvatar) AvatarEditorDialog(r.student.id, r.student.name, profile?.student?.gender) { editAvatar = false }
         profile?.let { ProfileCard(it) }
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
@@ -231,7 +231,7 @@ private fun StudentHeader(r: StudentReport, profile: EducationalProfile?, onAvat
     val st = profile?.student
     val sub = listOfNotNull(st?.gradeLabel, st?.age?.let { (if (st.ageApproximate) "حدود " else "") + it.fa() + " ساله" }).joinToString(" • ")
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        StudentAvatar(r.student.id, size = 96.dp, onClick = onAvatar)
+        StudentAvatar(r.student.id, size = 96.dp, gender = st?.gender, onClick = onAvatar)
         Text(r.student.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))

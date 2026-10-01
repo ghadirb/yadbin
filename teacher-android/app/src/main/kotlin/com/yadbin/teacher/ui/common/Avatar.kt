@@ -32,7 +32,7 @@ import kotlin.math.sin
 
 /** The student's picture, with NO empty state: own photo → chosen preset → default preset (spec §7). Local only. */
 @Composable
-fun StudentAvatar(studentId: String, modifier: Modifier = Modifier, size: Dp = 48.dp, onClick: (() -> Unit)? = null) {
+fun StudentAvatar(studentId: String, modifier: Modifier = Modifier, size: Dp = 48.dp, gender: String? = null, onClick: (() -> Unit)? = null) {
     val store = LocalContainer.current.avatars
     val version by store.version.collectAsStateWithLifecycle()
     val px = with(LocalDensity.current) { size.roundToPx() }
@@ -44,8 +44,11 @@ fun StudentAvatar(studentId: String, modifier: Modifier = Modifier, size: Dp = 4
     if (img != null) {
         Image(bitmap = img, contentDescription = "تصویر دانش‌آموز", contentScale = ContentScale.Crop, modifier = base)
     } else {
-        val src = AvatarLogic.resolve(store.hasPhoto(studentId), store.chosenPreset(studentId), studentId)
-        PresetAvatar((src as? AvatarLogic.Source.Preset)?.index ?: AvatarLogic.defaultIndex(studentId), base)
+        when (val src = AvatarLogic.resolve(store.hasPhoto(studentId), store.chosenPreset(studentId), studentId, gender)) {
+            is AvatarLogic.Source.Gender -> GenderAvatar(src.female, base)
+            is AvatarLogic.Source.Preset -> PresetAvatar(src.index, base)
+            AvatarLogic.Source.Photo -> PresetAvatar(AvatarLogic.defaultIndex(studentId), base)
+        }
     }
 }
 
@@ -53,7 +56,7 @@ private val AvatarBg = listOf(Color(0xFFCCFBF1), Color(0xFFFEF3C7), Color(0xFFE0
 private val AvatarFg = listOf(Color(0xFF2DD4BF), Color(0xFFFBBF24), Color(0xFF818CF8), Color(0xFFF472B6), Color(0xFF4ADE80), Color(0xFFFB923C))
 private val Ink = Color(0xFF1F2937)
 
-/** Six friendly, gender-neutral illustrations in one style (bear, cat, rabbit, owl, robot, sun). Drawn in code: no image files, no real children's photos. */
+/** Six friendly, gender-neutral preset illustrations in one style (bear, cat, rabbit, owl, robot, sun). Drawn in code: no image files, no real children's photos. */
 @Composable
 fun PresetAvatar(index: Int, modifier: Modifier = Modifier) {
     val i = index.mod(AvatarLogic.PRESET_COUNT)
@@ -112,5 +115,39 @@ fun PresetAvatar(index: Int, modifier: Modifier = Modifier) {
                 drawArc(Ink, 20f, 140f, false, topLeft = p(0.38f, 0.46f), size = Size(0.24f * s, 0.20f * s), style = Stroke(width = 0.02f * s, cap = StrokeCap.Round))
             }
         }
+    }
+}
+
+/** Default girl / boy illustration (same flat style as the presets, drawn in code; no photos). Shown only when gender is known and nothing else was chosen. */
+@Composable
+fun GenderAvatar(female: Boolean, modifier: Modifier = Modifier) {
+    val bg = if (female) Color(0xFFFCE7F3) else Color(0xFFDBEAFE)
+    val hair = if (female) Color(0xFF7C3A1D) else Color(0xFF3B2A20)
+    val skin = Color(0xFFFFDBB5)
+    val cloth = if (female) Color(0xFFF472B6) else Color(0xFF3B82F6)
+    Canvas(modifier.background(bg)) {
+        val s = size.minDimension
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+        // shoulders
+        drawOval(cloth, topLeft = p(0.15f, 0.76f), size = Size(0.70f * s, 0.55f * s))
+        if (female) {
+            // long hair behind the face + headscarf-free simple bow
+            drawRoundRect(hair, topLeft = p(0.20f, 0.18f), size = Size(0.60f * s, 0.62f * s), cornerRadius = CornerRadius(0.28f * s))
+        }
+        // neck + face
+        drawRect(skin, topLeft = p(0.44f, 0.62f), size = Size(0.12f * s, 0.18f * s))
+        drawCircle(skin, 0.25f * s, p(0.5f, 0.46f))
+        // hair front
+        if (female) {
+            drawArc(hair, 180f, 180f, true, topLeft = p(0.25f, 0.21f), size = Size(0.50f * s, 0.34f * s))
+            drawCircle(Color(0xFFEC4899), 0.045f * s, p(0.30f, 0.27f)); drawCircle(Color(0xFFEC4899), 0.045f * s, p(0.70f, 0.27f))
+        } else {
+            drawArc(hair, 180f, 180f, true, topLeft = p(0.25f, 0.20f), size = Size(0.50f * s, 0.28f * s))
+            drawCircle(hair, 0.06f * s, p(0.34f, 0.30f)); drawCircle(hair, 0.06f * s, p(0.50f, 0.26f)); drawCircle(hair, 0.06f * s, p(0.66f, 0.30f))
+        }
+        // face details
+        drawCircle(Ink, 0.027f * s, p(0.41f, 0.48f)); drawCircle(Ink, 0.027f * s, p(0.59f, 0.48f))
+        drawCircle(Color(0xFFFDA4AF).copy(alpha = 0.7f), 0.04f * s, p(0.35f, 0.56f)); drawCircle(Color(0xFFFDA4AF).copy(alpha = 0.7f), 0.04f * s, p(0.65f, 0.56f))
+        drawArc(Ink, 20f, 140f, false, topLeft = p(0.43f, 0.52f), size = Size(0.14f * s, 0.10f * s), style = Stroke(width = 0.018f * s, cap = StrokeCap.Round))
     }
 }

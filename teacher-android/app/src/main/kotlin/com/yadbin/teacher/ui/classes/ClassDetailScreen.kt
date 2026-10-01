@@ -200,7 +200,7 @@ fun ClassDetailScreen(
             vm.updateStudent(st.id, name, age, code, gender, note)
         })
     }
-    avatarFor?.let { st -> AvatarEditorDialog(st.id, st.name) { avatarFor = null } }
+    avatarFor?.let { st -> AvatarEditorDialog(st.id, st.name, st.gender) { avatarFor = null } }
     if (showAdd) AddStudentsDialog(onDismiss = { showAdd = false }, onSubmit = { text -> showAdd = false; vm.addStudents(text) })
 
     pending?.let { (action, who) ->
@@ -259,7 +259,7 @@ private fun StudentCard(s: StudentRow, onOpen: () -> Unit, onAvatar: () -> Unit,
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            StudentAvatar(s.id, size = 56.dp, onClick = onAvatar)
+            StudentAvatar(s.id, size = 56.dp, gender = s.gender, onClick = onAvatar)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(s.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

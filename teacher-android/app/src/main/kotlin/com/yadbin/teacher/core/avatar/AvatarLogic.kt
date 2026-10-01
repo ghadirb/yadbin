@@ -10,14 +10,19 @@ object AvatarLogic {
     sealed interface Source {
         data object Photo : Source
         data class Preset(val index: Int) : Source
+        /** Default girl / boy illustration, used only when the teacher recorded the student's gender and chose nothing else. */
+        data class Gender(val female: Boolean) : Source
     }
 
     /** Stable "random" default so a class of students without pictures does not show one identical image. */
     fun defaultIndex(studentId: String): Int = (studentId.hashCode() and Int.MAX_VALUE) % PRESET_COUNT
 
-    fun resolve(hasPhoto: Boolean, chosenPreset: Int?, studentId: String): Source = when {
+    /** Gender codes as stored by the server: "female" / "male"; anything else (null, unknown) keeps the neutral id-derived default. */
+    fun resolve(hasPhoto: Boolean, chosenPreset: Int?, studentId: String, gender: String? = null): Source = when {
         hasPhoto -> Source.Photo
         chosenPreset != null && chosenPreset in 0 until PRESET_COUNT -> Source.Preset(chosenPreset)
+        gender == "female" -> Source.Gender(female = true)
+        gender == "male" -> Source.Gender(female = false)
         else -> Source.Preset(defaultIndex(studentId))
     }
 

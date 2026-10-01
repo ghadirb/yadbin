@@ -25,13 +25,13 @@ import kotlinx.coroutines.launch
 
 /** Choose / change / remove the student's picture, or pick one of the preset avatars. Everything stays on this device. */
 @Composable
-fun AvatarEditorDialog(studentId: String, studentName: String, onDismiss: () -> Unit) {
+fun AvatarEditorDialog(studentId: String, studentName: String, gender: String? = null, onDismiss: () -> Unit) {
     val store = LocalContainer.current.avatars
     val version by store.version.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     val hasPhoto = remember(version) { store.hasPhoto(studentId) }
-    val selected = remember(version) { store.chosenPreset(studentId) ?: AvatarLogic.defaultIndex(studentId) }
+    val selected = remember(version) { store.chosenPreset(studentId) }
 
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch { error = if (store.savePhotoFromUri(studentId, uri)) null else "ذخیره‌ی تصویر ممکن نشد. تصویر دیگری را امتحان کنید." }
@@ -45,7 +45,7 @@ fun AvatarEditorDialog(studentId: String, studentName: String, onDismiss: () -> 
         title = { Text("تصویر «$studentName»") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                StudentAvatar(studentId, size = 96.dp)
+                StudentAvatar(studentId, size = 96.dp, gender = gender)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, Modifier.weight(1f)) {
                         Text(if (hasPhoto) "تغییر تصویر" else "از گالری")
@@ -54,6 +54,7 @@ fun AvatarEditorDialog(studentId: String, studentName: String, onDismiss: () -> 
                         try { camera.launch(null) } catch (e: Exception) { error = "دوربین در دسترس نیست." }
                     }, Modifier.weight(1f)) { Text("دوربین") }
                 }
+                if (!hasPhoto && selected != null) TextButton(onClick = { store.setPreset(studentId, null) }) { Text(if (gender == "female" || gender == "male") "بازگشت به آواتار دختر/پسر" else "بازگشت به آواتار خودکار") }
                 if (hasPhoto) TextButton(onClick = { store.removePhoto(studentId) }) { Text("حذف تصویر", color = MaterialTheme.colorScheme.error) }
                 Text("آواتار پیش‌فرض", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {

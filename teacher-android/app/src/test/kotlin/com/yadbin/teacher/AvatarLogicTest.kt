@@ -18,6 +18,17 @@ class AvatarLogicTest {
         assertEquals(AvatarLogic.Source.Preset(AvatarLogic.defaultIndex(id)), AvatarLogic.resolve(false, -1, id))
     }
 
+    @Test fun gender_default_applies_only_when_nothing_else_is_chosen() {
+        assertEquals(AvatarLogic.Source.Gender(true), AvatarLogic.resolve(false, null, id, "female"))
+        assertEquals(AvatarLogic.Source.Gender(false), AvatarLogic.resolve(false, null, id, "male"))
+        // photo and a preset the teacher picked always win over the gender default
+        assertEquals(AvatarLogic.Source.Photo, AvatarLogic.resolve(true, null, id, "female"))
+        assertEquals(AvatarLogic.Source.Preset(3), AvatarLogic.resolve(false, 3, id, "male"))
+        // unknown / missing gender keeps the neutral id-derived default
+        assertEquals(AvatarLogic.Source.Preset(AvatarLogic.defaultIndex(id)), AvatarLogic.resolve(false, null, id, null))
+        assertEquals(AvatarLogic.Source.Preset(AvatarLogic.defaultIndex(id)), AvatarLogic.resolve(false, null, id, "other"))
+    }
+
     @Test fun default_index_is_stable_in_range_and_spreads_students() {
         assertEquals(AvatarLogic.defaultIndex(id), AvatarLogic.defaultIndex(id))
         val ids = (1..60).map { java.util.UUID.nameUUIDFromBytes("s$it".toByteArray()).toString() }
