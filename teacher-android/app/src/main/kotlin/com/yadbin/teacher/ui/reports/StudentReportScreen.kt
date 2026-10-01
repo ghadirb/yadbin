@@ -120,19 +120,8 @@ private fun ReportContent(
         }
         r.skills.forEach { SkillCardView(it) }
 
-        if (history.isNotEmpty()) {
-            Text("تاریخچه‌ی فعالیت‌ها", style = MaterialTheme.typography.titleMedium)
-            history.take(20).forEach { h ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(h.title.ifBlank { Labels.game(h.gameType) }, style = MaterialTheme.typography.titleSmall)
-                        val state = when (h.status) { "completed" -> "انجام شد"; "started" -> "در حال انجام"; else -> "شروع نشده" }
-                        val date = (h.completedAt ?: h.startedAt).jalaliDateTimeFa().takeIf { it.isNotBlank() }
-                        Text(listOfNotNull(state, date).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
+        OverallTrendCard(history)
+        RecentActivities(history)
 
         if (recs != null && recs.recommendations.isNotEmpty()) {
             Text("پیشنهاد فعالیت بعدی", style = MaterialTheme.typography.titleMedium)
@@ -259,11 +248,7 @@ private fun ProfileCard(p: EducationalProfile) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("پروفایل آموزشی", style = MaterialTheme.typography.titleMedium)
             if (p.student.gradeLabel == null && p.student.age == null) Text("سن و پایه ثبت نشده است؛ از منوی دانش‌آموز در صفحه‌ی کلاس می‌توانید آن را اضافه کنید.", style = MaterialTheme.typography.bodySmall)
-            p.skills.forEach { k ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(k.label); Text(k.statusLabel.ifBlank { Edu.performanceLabel(k.status) }, style = MaterialTheme.typography.titleSmall)
-                }
-            }
+            if (p.skills.isNotEmpty()) SkillGrid(p.skills)
             if (p.summary.text.isNotBlank()) {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
                     Text(p.summary.text, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
@@ -283,6 +268,105 @@ private fun RecommendationCard(r: Recommendation, canCreate: Boolean, onUse: (Re
             InfoChips(listOfNotNull(Labels.game(r.gameType), r.levelLabel.ifBlank { Edu.levelLabel(r.level) }, r.templateTitle))
             FitBadge(r.fit)
             if (canCreate) TextButton(onClick = { onUse(r) }) { Text("ویرایش و ساخت این فعالیت") }
+        }
+    }
+}
+
+// ---- v1.2 UI step 3: profile skills grid, overall trend, recent activities (spec §11–13) ----------
+
+private fun toneOf(status: String): Tone? = when (status) {
+    "good" -> Tone.Success
+    "average" -> Tone.Info
+    "needs_practice" -> Tone.Warning // calm amber; never red, never a label on the child
+    else -> null
+}
+
+/** Current skills as small cards, two per row. Wording is always «عملکرد اخیر» — observed performance only, never a diagnosis. */
+@Composable
+private fun SkillGrid(skills: List<com.yadbin.teacher.domain.models.SkillIndicator>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        skills.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { k ->
+                    val word = k.statusLabel.ifBlank { Edu.performanceLabel(k.status) }
+                    Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), shape = MaterialTheme.shapes.medium) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(k.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                            Text("عملکرد اخیر", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val tone = toneOf(k.status)
+                            if (tone != null) StatusChip(word, tone) else StatusChip(word)
+                        }
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+private fun doneWithAccuracy(history: List<HistoryItem>): List<Pair<HistoryItem, Double>> =
+    history.filter { it.status == "completed" && it.accuracy != null }
+        .sortedBy { it.completedAt ?: it.startedAt ?: "" } // oldest → newest (ISO strings sort correctly)
+        .map { it to it.accuracy!!.coerceIn(0.0, 1.0) }
+
+/** One simple line over the student's finished activities (oldest → newest). Drawn only from 2 points on; no statistics, no comparison. */
+@Composable
+private fun OverallTrendCard(history: List<HistoryItem>) {
+    val pts = doneWithAccuracy(history).takeLast(12)
+    if (pts.size < 2) return
+    val line = MaterialTheme.colorScheme.primary
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    Card(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("روند عملکرد فعالیت‌ها", style = MaterialTheme.typography.titleMedium)
+            Canvas(Modifier.fillMaxWidth().height(110.dp).padding(vertical = 8.dp)) {
+                val w = size.width; val h = size.height
+                for (g in listOf(0f, 0.5f, 1f)) drawLine(grid, Offset(0f, h - g * h), Offset(w, h - g * h), strokeWidth = 1f)
+                val n = pts.size
+                // RTL reading order: the newest activity is on the left, earlier ones continue to the right
+                fun px(i: Int) = w - i * (w / (n - 1))
+                fun py(v: Double) = h - v.toFloat() * h
+                val path = Path()
+                pts.forEachIndexed { i, p -> if (i == 0) path.moveTo(px(i), py(p.second)) else path.lineTo(px(i), py(p.second)) }
+                drawPath(path, line, style = Stroke(width = 4f))
+                pts.forEachIndexed { i, p -> drawCircle(line, radius = 7f, center = Offset(px(i), py(p.second))) }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("فعالیت‌های قبلی", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("آخرین فعالیت", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("خلاصه‌ای از دقت پاسخ‌ها در فعالیت‌های یادبین؛ برای دیدن روند کلی است، نه ارزیابی دانش‌آموز.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RecentActivities(history: List<HistoryItem>) {
+    if (history.isEmpty()) return
+    SectionTitle("فعالیت‌های اخیر")
+    val recent = history.sortedByDescending { it.completedAt ?: it.startedAt ?: "" }.take(8)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        recent.forEach { h ->
+            val done = h.status == "completed"
+            val started = h.status == "started"
+            val whenText = (h.completedAt ?: h.startedAt).relativeDayFa()
+            val game = h.gameName.ifBlank { Labels.game(h.gameType) }
+            Card(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(h.title.ifBlank { game }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(listOf(game, whenText).filter { it.isNotBlank() }.joinToString(" • "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (done && h.accuracy != null && h.sampleCount > 0) {
+                            Text("دقت پاسخ‌ها: ${h.accuracy.percentFa()}", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    when {
+                        done -> StatusChip("انجام شد", Tone.Success)
+                        started -> StatusChip("در حال انجام", Tone.Info)
+                        else -> StatusChip("شروع نشده")
+                    }
+                }
+            }
         }
     }
 }
