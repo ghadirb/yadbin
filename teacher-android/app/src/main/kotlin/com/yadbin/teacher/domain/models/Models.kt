@@ -8,7 +8,11 @@ import kotlinx.serialization.json.JsonElement
 @Serializable data class LoginRequest(val phone: String, val password: String)
 @Serializable data class RegisterRequest(val name: String, val phone: String, val password: String)
 @Serializable data class ResetPasswordRequest(val phone: String, val recoveryCode: String, val newPassword: String)
-@Serializable data class ClassRequest(val name: String, val grade: String, val schoolName: String? = null)
+@Serializable data class ClassRequest(
+    val name: String, val grade: String, val schoolName: String? = null,
+    /** v1.2 structured fields; null = not sent (server keeps the old value). */
+    val gradeCode: String? = null, val ageMin: Int? = null, val ageMax: Int? = null,
+)
 @Serializable data class AddStudentsRequest(val text: String)
 @Serializable data class ActivityRequest(
     val classId: String,
@@ -34,6 +38,11 @@ import kotlinx.serialization.json.JsonElement
     val studentCount: Int = 0,
     val recentActivityCount: Int = 0,
     val archived: Boolean = false,
+    // v1.2 (null for old classes)
+    val gradeCode: String? = null,
+    val gradeLabel: String? = null,
+    val ageMin: Int? = null,
+    val ageMax: Int? = null,
 )
 @Serializable data class ClassesResponse(val classes: List<ClassSummary>)
 @Serializable data class ClassEnvelope(@SerialName("class") val cls: ClassSummary)
@@ -47,6 +56,14 @@ import kotlinx.serialization.json.JsonElement
     /** null until the server has enough data (same rule as the report) */
     val averagePerformance: Double? = null,
     val activityStateLabel: String = "",
+    // v1.2 (all optional)
+    val age: Int? = null,
+    val ageApproximate: Boolean = false,
+    val birthYear: Int? = null,
+    val gradeCode: String? = null,
+    val gradeLabel: String? = null,
+    val gender: String? = null,
+    val note: String? = null,
 )
 @Serializable data class ActivityRow(
     val id: String,
@@ -61,6 +78,14 @@ import kotlinx.serialization.json.JsonElement
     val expiresAt: String? = null,
     val assigned: Int = 0,
     val completed: Int = 0,
+    // v1.2
+    val level: String? = null,
+    val levelLabel: String? = null,
+    val skillLabels: List<String> = emptyList(),
+    val gradeMinLabel: String? = null,
+    val gradeMaxLabel: String? = null,
+    val ageMin: Int? = null,
+    val ageMax: Int? = null,
 )
 @Serializable data class ClassDetail(
     @SerialName("class") val cls: ClassSummary,
@@ -85,9 +110,22 @@ import kotlinx.serialization.json.JsonElement
     val suggestedMinutes: Int? = null,
     val lifecycle: String = "active",
     val lifecycleLabel: String = "",
+    // v1.2
+    val level: String? = null,
+    val levelLabel: String? = null,
+    val skills: List<String>? = null,
+    val skillLabels: List<String> = emptyList(),
+    val gradeMin: String? = null,
+    val gradeMax: String? = null,
+    val gradeMinLabel: String? = null,
+    val gradeMaxLabel: String? = null,
+    val ageMin: Int? = null,
+    val ageMax: Int? = null,
+    val templateId: String? = null,
+    val hasSuitabilityRange: Boolean = false,
 )
 @Serializable data class ActivityLink(val studentId: String, val name: String, val token: String, val url: String)
-@Serializable data class ActivityCreated(val activity: ActivityInfo, val links: List<ActivityLink> = emptyList())
+@Serializable data class ActivityCreated(val activity: ActivityInfo, val links: List<ActivityLink> = emptyList(), val suitability: Suitability? = null)
 @Serializable data class ActivityStudent(
     val studentId: String,
     val name: String,
@@ -96,6 +134,10 @@ import kotlinx.serialization.json.JsonElement
     val status: String,
     val startedAt: String? = null,
     val completedAt: String? = null,
+    // v1.2: advisory fit of the student to the activity range
+    val fit: String = "unknown",
+    val fitLabel: String? = null,
+    val fitReasons: List<String> = emptyList(),
 )
 @Serializable data class ActivityDetail(val activity: ActivityInfo, val students: List<ActivityStudent> = emptyList())
 

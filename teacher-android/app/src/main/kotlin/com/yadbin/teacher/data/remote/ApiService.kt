@@ -24,13 +24,22 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun classes(): ClassesResponse = c.request("GET", "/api/classes", ClassesResponse.serializer())
 
-    suspend fun createClass(name: String, grade: String, school: String?): ClassEnvelope =
-        c.request("POST", "/api/classes", ClassEnvelope.serializer(), j.encodeToString(ClassRequest.serializer(), ClassRequest(name, grade, school?.ifBlank { null })))
+    suspend fun createClass(name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassEnvelope =
+        c.request("POST", "/api/classes", ClassEnvelope.serializer(), j.encodeToString(ClassRequest.serializer(), ClassRequest(name, grade, school?.ifBlank { null }, gradeCode, ageMin, ageMax)))
 
     suspend fun classDetail(id: String): ClassDetail = c.request("GET", "/api/classes/$id", ClassDetail.serializer())
 
-    suspend fun updateClass(id: String, name: String, grade: String, school: String?): ClassEnvelope =
-        c.request("PUT", "/api/classes/$id", ClassEnvelope.serializer(), j.encodeToString(ClassRequest.serializer(), ClassRequest(name, grade, school?.ifBlank { null })))
+    /** v1.2: age range is always sent (null clears it); gradeCode null clears the structured grade. */
+    suspend fun updateClass(id: String, name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassEnvelope {
+        val body = buildJsonObject {
+            put("name", name); put("grade", grade)
+            put("schoolName", school?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("gradeCode", gradeCode?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("ageMin", ageMin?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("ageMax", ageMax?.let { JsonPrimitive(it) } ?: JsonNull)
+        }.toString()
+        return c.request("PUT", "/api/classes/$id", ClassEnvelope.serializer(), body)
+    }
 
     suspend fun deleteClass(id: String) { c.request("DELETE", "/api/classes/$id", OkResponse.serializer()) }
 
@@ -76,6 +85,50 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun activity(id: String): ActivityDetail = c.request("GET", "/api/activities/$id", ActivityDetail.serializer())
     suspend fun cancelActivity(id: String) { c.request("POST", "/api/activities/$id/cancel", OkResponse.serializer()) }
+
+    // ---- v1.2 ----
+    /** Sends every profile field: null clears it, so the edit form is the single source of truth. */
+    suspend fun updateStudent(id: String, name: String, age: Int?, gradeCode: String?, gender: String?, note: String?): StudentEnvelope {
+        val body = buildJsonObject {
+            put("name", name.trim())
+            put("age", age?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("gradeCode", gradeCode?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("gender", gender?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("note", note?.trim()?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        }.toString()
+        return c.request("PUT", "/api/students/$id", StudentEnvelope.serializer(), body)
+    }
+    suspend fun studentProfile(id: String): EducationalProfile = c.request("GET", "/api/students/$id/profile", EducationalProfile.serializer())
+    suspend fun recommendations(id: String): RecommendationsResponse = c.request("GET", "/api/students/$id/recommendations", RecommendationsResponse.serializer())
+    suspend fun templates(): TemplatesResponse = c.request("GET", "/api/templates", TemplatesResponse.serializer())
+    suspend fun aiDraft(prompt: String, classId: String?, studentId: String?): DraftResponse {
+        val body = buildJsonObject {
+            put("prompt", prompt.trim())
+            if (classId != null) put("classId", classId)
+            if (studentId != null) put("studentId", studentId)
+        }.toString()
+        return c.request("POST", "/api/ai/activity-draft", DraftResponse.serializer(), body)
+    }
+    suspend fun dashboard(query: String = ""): DashboardResponse = c.request("GET", "/api/dashboard$query", DashboardResponse.serializer())
+
+    /** Creates an activity from the teacher-approved form (plain, template or AI draft all end up here). */
+    suspend fun createActivityV12(spec: ActivitySpec): ActivityCreated {
+        val body = buildJsonObject {
+            put("classId", spec.classId); put("gameType", spec.gameType); put("difficultyMode", spec.difficultyMode); put("questionCount", spec.questionCount)
+            put("studentIds", if (spec.studentIds == null) JsonPrimitive("all") else JsonArray(spec.studentIds.map { JsonPrimitive(it) }))
+            spec.title?.takeIf { it.isNotBlank() }?.let { put("title", it.trim()) }
+            spec.description?.takeIf { it.isNotBlank() }?.let { put("description", it.trim()) }
+            spec.suggestedMinutes?.let { put("suggestedMinutes", it) }
+            spec.level?.let { put("level", it) }
+            if (spec.skills.isNotEmpty()) put("skills", JsonArray(spec.skills.map { JsonPrimitive(it) }))
+            spec.gradeMin?.let { put("gradeMin", it) }
+            spec.gradeMax?.let { put("gradeMax", it) }
+            spec.ageMin?.let { put("ageMin", it) }
+            spec.ageMax?.let { put("ageMax", it) }
+            spec.templateId?.let { put("templateId", it) }
+        }.toString()
+        return c.request("POST", "/api/activities", ActivityCreated.serializer(), body)
+    }
 
     suspend fun studentReport(id: String): StudentReport = c.request("GET", "/api/reports/student/$id", StudentReport.serializer())
     suspend fun classReport(id: String): ClassReport = c.request("GET", "/api/reports/class/$id", ClassReport.serializer())
