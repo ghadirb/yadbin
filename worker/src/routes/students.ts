@@ -1,7 +1,7 @@
 import type { Env } from '../env';
 import { effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from '../db/queries';
 import { gradeByCode } from '../education/catalog';
-import { buildStudentReport, studentHistory } from '../services/metrics';
+import { buildEducationalProfile, buildRecommendations, buildStudentReport, studentHistory } from '../services/metrics';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { parse, studentSchema, studentUpdateSchema } from '../validation/schemas';
@@ -95,4 +95,13 @@ export async function deleteStudent(env: Env, teacherId: string, id: string) {
     env.DB.prepare('DELETE FROM students WHERE id = ? AND teacher_id = ?').bind(id, teacherId),
   ]);
   return json({ ok: true });
+}
+
+/** GET /students/:id/profile — v1.2 educational profile (age, grade, skill indicators, summary). */
+export async function getEducationalProfile(env: Env, teacherId: string, id: string) {
+  return json(await buildEducationalProfile(env.DB, await getOwnedStudent(env.DB, teacherId, id)));
+}
+/** GET /students/:id/recommendations — suggestions only; creates nothing. */
+export async function getRecommendations(env: Env, teacherId: string, id: string) {
+  return json(await buildRecommendations(env.DB, await getOwnedStudent(env.DB, teacherId, id)));
 }

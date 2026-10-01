@@ -282,3 +282,119 @@ describe('v1.2 step 2 — templates', () => {
     expect((await t.api('POST', '/api/activities/from-template', { templateId: 'memory-visual-intro', classId: c.id }, b.token)).status).toBe(404);
   });
 });
+
+// ───────────────────────── steps 4 & 5 ─────────────────────────
+import { recentSummary, recommendActivities } from '../src/education/insights';
+import { aggregateGame, type GameType } from '../src/scoring';
+
+const attEvents = (n: number, good: boolean) => Array.from({ length: n }, () => ({
+  gridSize: 3, targetType: 'blue', targetCount: 3, correctTargets: good ? 3 : 1, wrongTargets: good ? 0 : 2, missedTargets: good ? 0 : 2, falseClicks: good ? 0 : 2,
+  reactionTime: 1800, totalTime: 5000, difficulty: 1, ruleChanged: false, phase: 'none' as const,
+}));
+const FORBIDDEN = ['اختلال', 'بیماری', 'بیش‌فعالی', 'بیش فعالی', 'تشخیص پزشکی را', 'اوتیسم', 'ADHD'];
+
+async function finish(token: string, url: string, events: unknown[]) {
+  const tk = url.split('/play/')[1];
+  const p = (await t.api('GET', `/api/play/${tk}`)).data;
+  const r = await t.api('POST', `/api/play/${tk}/complete`, { sessionId: p.session.id, events });
+  expect(r.status).toBe(200);
+  void token;
+}
+async function runActivity(token: string, classId: string, studentId: string, gameType: string, events: unknown[], extra: object = {}) {
+  const a = await t.api('POST', '/api/activities', { classId, gameType, difficultyMode: 'easy', questionCount: 5, studentIds: [studentId], ...extra }, token);
+  expect(a.status).toBe(201);
+  await finish(token, a.data.links[0].url, events);
+  return a.data;
+}
+
+describe('v1.2 step 4 — summary text & recommendation logic (pure)', () => {
+  const agg = (game: GameType, accs: number[]) => aggregateGame(game, accs.map((accuracy, i) => ({ createdAt: `2026-09-0${i + 1}T10:00:00.000Z`, metrics: { game, sampleCount: 5, accuracy, averageResponseTime: 2000, difficultyReached: 1, hintsUsed: 0, independenceScore: null, helpResponseScore: null, details: {} } })));
+  const all = (m: number[], a: number[], p: number[]) => ({ memory: agg('memory', m), attention: agg('attention', a), problem_solving: agg('problem_solving', p) });
+
+  it('summarises only what the data shows', () => {
+    expect(recentSummary(all([], [], [])).text).toBe('برای تهیه خلاصه‌ی عملکرد، فعالیت‌های بیشتری لازم است.');
+    const s = recentSummary(all([0.9, 0.9, 0.85], [0.9, 0.4], []));
+    expect(s.basedOn).toBe(5);
+    expect(s.text).toBe('در ۵ فعالیت اخیر، عملکرد دانش‌آموز در فعالیت‌های مربوط به حافظه پایدار بوده و در فعالیت‌های مربوط به توجه نوسان بیشتری داشته است.');
+    expect(recentSummary(all([0.9], [0.9], [])).text).toContain('برای تهیه');
+    expect(recentSummary(all([0.9, 0.9], [0.6], [])).text).toContain('برای توجه فقط یک فعالیت ثبت شده');
+    for (const w of FORBIDDEN) expect(s.text).not.toContain(w);
+  });
+
+  it('recommends practice for the weaker skill, a step up for the stronger one, never an out-of-range template', () => {
+    const recs = recommendActivities(all([0.95, 0.95], [0.3, 0.3], [0.7, 0.7]), { gradeOrder: 4, age: 10 });
+    expect(recs).toHaveLength(3);
+    expect(recs[0]).toMatchObject({ rank: 1, gameType: 'attention', basis: 'needs_practice', level: 'introductory' });
+    expect(recs[0].text).toBe('برای فعالیت بعدی، تمرین توجه با سطح مقدماتی پیشنهاد می‌شود.');
+    expect(recs.at(-1)).toMatchObject({ gameType: 'memory', basis: 'step_up', level: 'intermediate' });
+    for (const r of recs) { expect(r.fit).not.toBe('out_of_range'); expect(r.templateId).toBeTruthy(); expect(r.prefill.templateId).toBe(r.templateId); }
+    // grade 1 never gets the advanced "selective attention" template
+    const young = recommendActivities(all([], [0.95, 0.95], []), { gradeOrder: 1, age: 6 });
+    expect(young.find((r) => r.gameType === 'attention')!.templateId).not.toBe('attention-selective');
+    // insufficient data → "collect data", does not repeat the last template when another fits
+    const fresh = recommendActivities(all([], [], []), { gradeOrder: 3, age: 8, lastTemplateId: 'memory-visual-intro', lastGame: 'memory' });
+    expect(fresh.every((r) => r.basis === 'collect_data')).toBe(true);
+    expect(fresh.at(-1)!.gameType).toBe('memory');
+    expect(fresh.find((r) => r.gameType === 'memory')!.templateId).not.toBe('memory-visual-intro');
+    for (const r of recs) for (const w of FORBIDDEN) { expect(r.text + r.reason).not.toContain(w); }
+  });
+});
+
+describe('v1.2 steps 4–5 — API on real results', () => {
+  it('profile + report + recommendations are built from actual results; nothing is created automatically', async () => {
+    const { token } = await registerTeacher(t);
+    const c = (await t.api('POST', '/api/classes', { name: 'چهارم الف', gradeCode: 'g4' }, token)).data.class;
+    const s = (await t.api('POST', '/api/students', { name: 'سارا احمدی', classId: c.id, age: 10 }, token)).data.student;
+
+    // no data yet → honest "not enough data", still gives collect-data suggestions
+    const empty = (await t.api('GET', `/api/students/${s.id}/profile`, undefined, token)).data;
+    expect(empty.student).toMatchObject({ age: 10, gradeLabel: 'چهارم ابتدایی' });
+    expect(empty.skills.map((k: any) => k.statusLabel)).toEqual(['داده کافی نیست', 'داده کافی نیست', 'داده کافی نیست']);
+    expect(empty.summary.text).toContain('برای تهیه');
+
+    await runActivity(token, c.id, s.id, 'memory', memoryEvents(5, 5), { title: 'حافظه ۱' });
+    await runActivity(token, c.id, s.id, 'memory', memoryEvents(5, 5), { title: 'حافظه ۲' });
+    await runActivity(token, c.id, s.id, 'attention', attEvents(5, false));
+    await runActivity(token, c.id, s.id, 'attention', attEvents(5, false));
+    const before = (await t.api('GET', '/api/activities?lifecycle=all', undefined, token)).data.activities.length;
+
+    const prof = (await t.api('GET', `/api/students/${s.id}/profile`, undefined, token)).data;
+    expect(prof.completedActivities).toBe(4);
+    expect(prof.skills.find((k: any) => k.skill === 'memory')).toMatchObject({ status: 'good', statusLabel: 'خوب' });
+    expect(prof.skills.find((k: any) => k.skill === 'attention')).toMatchObject({ status: 'needs_practice', statusLabel: 'نیاز به تمرین بیشتر' });
+    expect(prof.summary.text).toContain('حافظه');
+    expect(prof.summary.text).toContain('۴ فعالیت اخیر');
+
+    const rec = (await t.api('GET', `/api/students/${s.id}/recommendations`, undefined, token)).data;
+    expect(rec.requiresTeacherApproval).toBe(true);
+    expect(rec.recommendations[0].gameType).toBe('attention');         // the weaker skill first
+    expect(rec.recommendations.at(-1).gameType).toBe('memory');         // the strong one last
+    const after = (await t.api('GET', '/api/activities?lifecycle=all', undefined, token)).data.activities.length;
+    expect(after).toBe(before);                                          // suggestions never create anything
+
+    // the existing report is extended, not replaced
+    const rep = (await t.api('GET', `/api/reports/student/${s.id}`, undefined, token)).data;
+    expect(rep).toHaveProperty('skills'); expect(rep).toHaveProperty('summary'); expect(rep).toHaveProperty('suggestions');
+    expect(rep.profile).toMatchObject({ age: 10, gradeCode: 'g4' });
+    expect(rep.skillIndicators).toHaveLength(3);
+    expect(rep.nextActivity.rank).toBe(1);
+    expect(typeof rep.summaryText).toBe('string');
+    const flat = JSON.stringify([prof, rec, rep]);
+    for (const w of FORBIDDEN) expect(flat).not.toContain(w);
+
+    // teacher follows a suggestion: create from the prefilled template → it is a normal, editable activity
+    const first = rec.recommendations[0];
+    const made = await t.api('POST', '/api/activities/from-template', { ...first.prefill, classId: c.id, studentIds: [s.id] }, token);
+    expect(made.status).toBe(201);
+    expect(made.data.activity.templateId).toBe(first.templateId);
+  });
+
+  it("security: another teacher gets 404 for a student's profile and recommendations", async () => {
+    const a = await registerTeacher(t), b = await registerTeacher(t);
+    const c = (await t.api('POST', '/api/classes', { name: 'کلاس خصوصی', gradeCode: 'g3' }, a.token)).data.class;
+    const s = (await t.api('POST', '/api/students', { name: 'دانش‌آموز خصوصی', classId: c.id }, a.token)).data.student;
+    for (const path of [`/api/students/${s.id}/profile`, `/api/students/${s.id}/recommendations`, `/api/reports/student/${s.id}`])
+      expect((await t.api('GET', path, undefined, b.token)).status).toBe(404);
+    expect((await t.api('GET', `/api/students/${s.id}/recommendations`)).status).toBe(401);
+  });
+});
