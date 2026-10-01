@@ -50,6 +50,23 @@ class ActivityViewModel(private val repo: Repository, private val id: String) : 
     init { refresh() }
     fun refresh() { viewModelScope.launch { if (_state.value !is Ui.Ready) _state.value = Ui.Loading; _state.value = loadUi { repo.activity(id) } } }
     fun clearMessage() { _message.value = null }
+    fun duplicate(onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            try { val r = repo.duplicateActivity(id); _message.value = "نسخه‌ی جدید ساخته شد."; onCreated(r.activity.id) }
+            catch (e: ApiException) { _message.value = errorText(e) }
+            catch (e: NetworkException) { _message.value = errorText(e) }
+        }
+    }
+    fun save(title: String, description: String, minutes: Int?) = doAction("تغییرات ذخیره شد.") { repo.updateActivity(id, title, description, minutes) }
+    fun setArchived(archived: Boolean) = doAction(if (archived) "فعالیت آرشیو شد." else "فعالیت از آرشیو خارج شد.") { repo.setActivityArchived(id, archived) }
+    fun regenerate(studentId: String) = doAction("لینک جدید ساخته شد؛ لینک قبلی دیگر کار نمی‌کند.") { repo.regenerateLink(id, studentId) }
+    private fun doAction(success: String, block: suspend () -> Any) {
+        viewModelScope.launch {
+            try { block(); _message.value = success; refresh() }
+            catch (e: ApiException) { _message.value = errorText(e) }
+            catch (e: NetworkException) { _message.value = errorText(e) }
+        }
+    }
     fun cancel() {
         viewModelScope.launch {
             try { repo.cancelActivity(id); _message.value = "فعالیت لغو شد."; refresh() }
@@ -60,7 +77,7 @@ class ActivityViewModel(private val repo: Repository, private val id: String) : 
 }
 
 @Composable
-fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (String) -> Unit) {
+fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (String) -> Unit, onOpenActivity: (String) -> Unit = {}) {
     val c = LocalContainer.current
     val ctx = LocalContext.current
     val vm: ActivityViewModel = viewModel(key = "activity-$activityId", factory = VmFactory { ActivityViewModel(c.repository, activityId) })
@@ -68,6 +85,8 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
     val message by vm.message.collectAsStateWithLifecycle()
     var qrFor by remember { mutableStateOf<ActivityStudent?>(null) }
     var confirmCancel by remember { mutableStateOf(false) }
+    var showEdit by remember { mutableStateOf(false) }
+    var regenFor by remember { mutableStateOf<ActivityStudent?>(null) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -83,8 +102,15 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                     if (s.offline) OfflineBanner()
                     val a = s.data.activity
                     Column(Modifier.padding(16.dp)) {
-                        Text(Labels.game(a.gameType), style = MaterialTheme.typography.titleMedium)
-                        Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${Labels.activityStatus(a.status)}", style = MaterialTheme.typography.bodySmall)
+                        Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleMedium)
+                        Text("${Labels.game(a.gameType)} • ${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
+                        a.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                        a.suggestedMinutes?.let { Text("زمان پیشنهادی: ${it.fa()} دقیقه", style = MaterialTheme.typography.bodySmall) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { showEdit = true }) { Text("ویرایش") }
+                            TextButton(onClick = { vm.duplicate(onOpenActivity) }) { Text("ساخت نسخه جدید") }
+                            TextButton(onClick = { vm.setArchived(a.lifecycle != "archived") }) { Text(if (a.lifecycle == "archived") "خروج از آرشیو" else "آرشیو") }
+                        }
                         Text("هر دانش‌آموز لینک اختصاصی خودش را دارد؛ لینک را فقط برای همان دانش‌آموز بفرستید.", style = MaterialTheme.typography.bodySmall)
                         if (a.status == "active") TextButton(onClick = { confirmCancel = true }) { Text("لغو فعالیت", color = MaterialTheme.colorScheme.error) }
                     }
@@ -100,6 +126,7 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                                         TextButton(onClick = { copyLink(ctx, st.url); }) { Text("کپی لینک") }
                                         TextButton(onClick = { qrFor = st }) { Text("QR") }
                                         TextButton(onClick = { shareLink(ctx, st.url) }) { Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("اشتراک‌گذاری") }
+                                        if (st.status != "completed" && a.status == "active") TextButton(onClick = { regenFor = st }) { Text("لینک جدید") }
                                         if (st.status == "completed") TextButton(onClick = { onOpenStudent(st.studentId) }) { Text("گزارش") }
                                     }
                                 }
@@ -125,7 +152,38 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
             confirmButton = { TextButton(onClick = { qrFor = null }) { Text("بستن") } },
         )
     }
+    regenFor?.let { st ->
+        ConfirmDialog("ساخت لینک جدید", "لینک فعلی «${st.name}» باطل می‌شود و لینک تازه ساخته می‌شود. اگر بازی را شروع کرده باشد، ادامه‌ی همان بازی حفظ می‌شود.", "ساخت لینک جدید",
+            { regenFor = null; vm.regenerate(st.studentId) }, { regenFor = null })
+    }
+    if (showEdit) {
+        val cur = (state as? Ui.Ready)?.data?.activity
+        if (cur != null) EditActivityDialog(cur.title ?: "", cur.description ?: "", cur.suggestedMinutes, { showEdit = false }) { t, d, m -> showEdit = false; vm.save(t, d, m) }
+    }
     if (confirmCancel) ConfirmDialog("لغو فعالیت", "لینک‌های این فعالیت غیرفعال می‌شوند.", "لغو فعالیت", { confirmCancel = false; vm.cancel() }, { confirmCancel = false })
+}
+
+@Composable
+private fun EditActivityDialog(title: String, description: String, minutes: Int?, onDismiss: () -> Unit, onSave: (String, String, Int?) -> Unit) {
+    var t by remember { mutableStateOf(title) }
+    var d by remember { mutableStateOf(description) }
+    var m by remember { mutableStateOf(minutes?.toString() ?: "") }
+    val mins = m.trim().toIntOrNull()
+    val valid = m.isBlank() || (mins != null && mins in 1..120)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ویرایش فعالیت") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(t, { t = it.take(80) }, label = { Text("عنوان") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(d, { d = it.take(500) }, label = { Text("توضیحات") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(m, { m = it.filter { ch -> ch.isDigit() }.take(3) }, label = { Text("زمان پیشنهادی (دقیقه)") }, singleLine = true, isError = !valid, modifier = Modifier.fillMaxWidth())
+                Text("سطح دشواری و تعداد سؤال پس از شروع دانش‌آموزان قابل تغییر نیست؛ برای آن از «ساخت نسخه جدید» استفاده کنید.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(enabled = valid, onClick = { onSave(t, d, if (m.isBlank()) null else mins) }) { Text("ذخیره") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
+    )
 }
 
 @Composable

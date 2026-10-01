@@ -48,6 +48,8 @@ class Repository(
 
     // ---- reads (network first, cached copy when offline) ------------------------------------
     suspend fun classes(): Loaded<ClassesResponse> = cached("classes", ClassesResponse.serializer()) { api.classes() }
+    suspend fun archivedClasses(): Loaded<ClassesResponse> = cached("classes:archived", ClassesResponse.serializer()) { api.archivedClasses() }
+    suspend fun studentHistory(id: String): Loaded<StudentHistory> = cached("history:$id", StudentHistory.serializer()) { api.studentHistory(id) }
     suspend fun classDetail(id: String): Loaded<ClassDetail> = cached("class:$id", ClassDetail.serializer()) { api.classDetail(id) }
     suspend fun classReport(id: String): Loaded<ClassReport> = cached("classReport:$id", ClassReport.serializer()) { api.classReport(id) }
     suspend fun studentReport(id: String): Loaded<StudentReport> = cached("student:$id", StudentReport.serializer()) { api.studentReport(id) }
@@ -63,6 +65,11 @@ class Repository(
     suspend fun createActivity(classId: String, gameType: String, difficulty: String, questionCount: Int, studentIds: List<String>?): ActivityCreated =
         api.createActivity(classId, gameType, difficulty, questionCount, studentIds)
     suspend fun cancelActivity(id: String) = api.cancelActivity(id)
+    suspend fun setClassArchived(id: String, archived: Boolean): ClassSummary = api.setClassArchived(id, archived).cls
+    suspend fun updateActivity(id: String, title: String, description: String, minutes: Int?): ActivityDetail = api.updateActivity(id, title, description, minutes)
+    suspend fun duplicateActivity(id: String): ActivityCreated = api.duplicateActivity(id)
+    suspend fun setActivityArchived(id: String, archived: Boolean): ActivityDetail = api.setActivityArchived(id, archived)
+    suspend fun regenerateLink(activityId: String, studentId: String): LinksResponse = api.regenerateLink(activityId, studentId)
 
     private suspend fun <T> cached(key: String, serializer: KSerializer<T>, fetch: suspend () -> T): Loaded<T> {
         try {

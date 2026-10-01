@@ -21,6 +21,8 @@ import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.secondsFa
+import com.yadbin.teacher.core.utils.toFa
+import com.yadbin.teacher.domain.models.HistoryItem
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.SeriesPoint
 import com.yadbin.teacher.domain.models.SkillCard
@@ -35,8 +37,17 @@ import kotlinx.coroutines.launch
 class StudentReportViewModel(private val repo: Repository, private val id: String) : ViewModel() {
     private val _state = MutableStateFlow<Ui<StudentReport>>(Ui.Loading)
     val state: StateFlow<Ui<StudentReport>> = _state.asStateFlow()
+    private val _history = MutableStateFlow<List<HistoryItem>>(emptyList())
+    val history: StateFlow<List<HistoryItem>> = _history.asStateFlow()
     init { refresh() }
-    fun refresh() { viewModelScope.launch { if (_state.value !is Ui.Ready) _state.value = Ui.Loading; _state.value = loadUi { repo.studentReport(id) } } }
+    fun refresh() {
+        viewModelScope.launch {
+            if (_state.value !is Ui.Ready) _state.value = Ui.Loading
+            _state.value = loadUi { repo.studentReport(id) }
+            // History is a bonus section: a failure here must not hide the report.
+            try { _history.value = repo.studentHistory(id).data.history } catch (e: Exception) { /* keep previous */ }
+        }
+    }
 }
 
 @Composable
@@ -44,6 +55,7 @@ fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
     val c = LocalContainer.current
     val vm: StudentReportViewModel = viewModel(key = "student-$studentId", factory = VmFactory { StudentReportViewModel(c.repository, studentId) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
     val title = (state as? Ui.Ready)?.data?.student?.name ?: "گزارش دانش‌آموز"
 
     Scaffold(topBar = { YadbinTopBar(title, onBack) }) { pad ->
@@ -53,7 +65,7 @@ fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
                 is Ui.Error -> ErrorBox(s.message, vm::refresh)
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
-                    ReportContent(s.data)
+                    ReportContent(s.data, history)
                 }
             }
         }
@@ -61,16 +73,41 @@ fun StudentReportScreen(studentId: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ReportContent(r: StudentReport) {
+private fun ReportContent(r: StudentReport, history: List<HistoryItem>) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
+        if (r.summary.sessions > 0) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("خلاصه", style = MaterialTheme.typography.titleMedium)
+                    Metric("تعداد موفقیت‌ها", "${r.summary.successes.fa()} از ${r.summary.sessions.fa()}")
+                    if (r.summary.sufficientData) r.summary.performance?.let { Metric("درصد عملکرد", it.percentFa()) }
+                    else Text("برای نمایش درصد عملکرد، فعالیت‌های بیشتری لازم است.", style = MaterialTheme.typography.bodySmall)
+                    Metric("زمان صرف‌شده", "${r.summary.timeSpentMinutes.fa()} دقیقه")
+                }
+            }
+        }
         if (r.notice.isNotBlank()) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
                 Text(r.notice, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
             }
         }
         r.skills.forEach { SkillCardView(it) }
+
+        if (history.isNotEmpty()) {
+            Text("تاریخچه‌ی فعالیت‌ها", style = MaterialTheme.typography.titleMedium)
+            history.take(20).forEach { h ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(h.title.ifBlank { Labels.game(h.gameType) }, style = MaterialTheme.typography.titleSmall)
+                        val state = when (h.status) { "completed" -> "انجام شد"; "started" -> "در حال انجام"; else -> "شروع نشده" }
+                        val date = (h.completedAt ?: h.startedAt)?.take(10)?.toFa()
+                        Text(listOfNotNull(state, date).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
 
         Text("پیشنهاد سیستم", style = MaterialTheme.typography.titleMedium)
         if (r.suggestions.isEmpty()) {

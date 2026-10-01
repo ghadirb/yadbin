@@ -104,7 +104,7 @@ fun AppNav() {
         }
         composable(Routes.ACTIVITY) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
-            ActivityScreen(activityId = id, onBack = { nav.popBackStack() }, onOpenStudent = { nav.navigate("student/$it") })
+            ActivityScreen(activityId = id, onBack = { nav.popBackStack() }, onOpenStudent = { nav.navigate("student/$it") }, onOpenActivity = { nav.navigate("activity/$it") })
         }
         composable(Routes.STUDENT) { e ->
             val id = e.arguments?.getString("id") ?: return@composable

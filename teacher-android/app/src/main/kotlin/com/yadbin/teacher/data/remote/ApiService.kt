@@ -4,7 +4,10 @@ import com.yadbin.teacher.core.network.ApiClient
 import com.yadbin.teacher.domain.models.*
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** One function per Worker endpoint (docs/api.md). */
 class ApiService(private val c: ApiClient) {
@@ -46,6 +49,26 @@ class ApiService(private val c: ApiClient) {
         val ids: JsonElement = if (studentIds == null) JsonPrimitive("all") else JsonArray(studentIds.map { JsonPrimitive(it) })
         val body = j.encodeToString(ActivityRequest.serializer(), ActivityRequest(classId, gameType, difficulty, questionCount, ids))
         return c.request("POST", "/api/activities", ActivityCreated.serializer(), body)
+    }
+
+    // ---- v1.1 ----
+    suspend fun archivedClasses(): ClassesResponse = c.request("GET", "/api/classes?archived=true", ClassesResponse.serializer())
+    suspend fun setClassArchived(id: String, archived: Boolean): ClassEnvelope =
+        c.request("POST", "/api/classes/$id/${if (archived) "archive" else "unarchive"}", ClassEnvelope.serializer())
+    suspend fun studentHistory(id: String): StudentHistory = c.request("GET", "/api/students/$id/history", StudentHistory.serializer())
+    suspend fun updateActivity(id: String, title: String, description: String, minutes: Int?): ActivityDetail {
+        val body = buildJsonObject {
+            put("title", title.trim()); put("description", description.trim())
+            if (minutes != null) put("suggestedMinutes", minutes) else put("suggestedMinutes", JsonNull)
+        }.toString()
+        return c.request("PUT", "/api/activities/$id", ActivityDetail.serializer(), body)
+    }
+    suspend fun duplicateActivity(id: String): ActivityCreated = c.request("POST", "/api/activities/$id/duplicate", ActivityCreated.serializer())
+    suspend fun setActivityArchived(id: String, archived: Boolean): ActivityDetail =
+        c.request("POST", "/api/activities/$id/${if (archived) "archive" else "unarchive"}", ActivityDetail.serializer())
+    suspend fun regenerateLink(activityId: String, studentId: String): LinksResponse {
+        val body = buildJsonObject { put("studentId", studentId) }.toString()
+        return c.request("POST", "/api/activities/$activityId/regenerate-links", LinksResponse.serializer(), body)
     }
 
     suspend fun activity(id: String): ActivityDetail = c.request("GET", "/api/activities/$id", ActivityDetail.serializer())

@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -28,12 +29,15 @@ import kotlinx.coroutines.launch
 class DashboardViewModel(private val repo: Repository) : ViewModel() {
     private val _state = MutableStateFlow<Ui<ClassesResponse>>(Ui.Loading)
     val state: StateFlow<Ui<ClassesResponse>> = _state.asStateFlow()
+    private var archived = false
     init { refresh() }
+
+    fun showArchived(value: Boolean) { if (archived != value) { archived = value; _state.value = Ui.Loading; refresh() } }
 
     fun refresh() {
         viewModelScope.launch {
             if (_state.value !is Ui.Ready) _state.value = Ui.Loading
-            _state.value = loadUi { repo.classes() }
+            _state.value = loadUi { if (archived) repo.archivedClasses() else repo.classes() }
         }
     }
 
@@ -45,6 +49,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
     val c = LocalContainer.current
     val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository) })
     val state by vm.state.collectAsStateWithLifecycle()
+    var archivedTab by rememberSaveable { mutableStateOf(false) }
 
     // refresh when coming back from Create Class / Class Detail
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -68,6 +73,10 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !archivedTab, onClick = { archivedTab = false; vm.showArchived(false) }, label = { Text("کلاس‌های فعال") })
+                FilterChip(selected = archivedTab, onClick = { archivedTab = true; vm.showArchived(true) }, label = { Text("آرشیو") })
+            }
             when (val s = state) {
                 Ui.Loading -> LoadingBox()
                 is Ui.Error -> ErrorBox(s.message, vm::refresh)
@@ -75,7 +84,8 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                     if (s.offline) OfflineBanner()
                     if (s.data.classes.isEmpty()) {
                         Spacer(Modifier.height(48.dp))
-                        EmptyState("هنوز کلاسی ایجاد نکرده‌اید.", "ساخت اولین کلاس", onCreateClass)
+                        if (archivedTab) EmptyState("کلاس آرشیوشده‌ای وجود ندارد.")
+                        else EmptyState("هنوز کلاسی ایجاد نکرده‌اید.", "ساخت اولین کلاس", onCreateClass)
                     } else {
                         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(s.data.classes, key = { it.id }) { cls ->
