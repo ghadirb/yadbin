@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.yadbin.teacher.core.auth.EncryptedTokenStore
 import com.yadbin.teacher.core.auth.TokenStore
+import com.yadbin.teacher.core.avatar.StudentAvatarStore
 import com.yadbin.teacher.core.database.AppDatabase
 import com.yadbin.teacher.core.network.ApiClient
 import com.yadbin.teacher.data.local.RoomCacheStore
@@ -26,6 +27,8 @@ class AppContainer(app: Application) {
     )
     val repository = Repository(ApiService(client), RoomCacheStore(db.cacheDao()), tokens)
     val createActivity = CreateActivityUseCase(repository)
+    /** Student pictures: local-only (never uploaded). */
+    val avatars = StudentAvatarStore(app)
     /** One-shot hand-over from the AI builder / recommendations to the create-activity form (the form is then read-and-cleared). */
     @Volatile var prefill: com.yadbin.teacher.domain.models.ActivityPrefill? = null
 }

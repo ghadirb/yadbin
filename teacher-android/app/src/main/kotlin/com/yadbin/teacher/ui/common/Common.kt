@@ -65,8 +65,9 @@ fun ErrorBox(message: String, onRetry: (() -> Unit)?) {
 }
 
 @Composable
-fun EmptyState(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+fun EmptyState(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null, illustration: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (illustration != null) { illustration(); Spacer(Modifier.height(12.dp)) }
         Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(12.dp))

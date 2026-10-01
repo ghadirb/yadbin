@@ -9,6 +9,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -20,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
+import com.yadbin.teacher.core.utils.relativeDayFa
 import com.yadbin.teacher.core.utils.secondsFa
 import com.yadbin.teacher.core.utils.jalaliFa
 import com.yadbin.teacher.core.utils.jalaliDateTimeFa
@@ -92,7 +95,10 @@ private fun ReportContent(
     r: StudentReport, history: List<HistoryItem>, profile: EducationalProfile?, recs: RecommendationsResponse?,
     canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit,
 ) {
+    var editAvatar by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        StudentHeader(r, profile, onAvatar = { editAvatar = true })
+        if (editAvatar) AvatarEditorDialog(r.student.id, r.student.name) { editAvatar = false }
         profile?.let { ProfileCard(it) }
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
@@ -219,18 +225,39 @@ private fun TrendChart(series: List<SeriesPoint>) {
 
 
 /** Educational profile: performance INDICATORS from activities - never a medical or psychological assessment. */
+/** Top of the student profile (spec §10): picture/avatar, name, grade • age, and three headline numbers. */
+@Composable
+private fun StudentHeader(r: StudentReport, profile: EducationalProfile?, onAvatar: () -> Unit) {
+    val st = profile?.student
+    val sub = listOfNotNull(st?.gradeLabel, st?.age?.let { (if (st.ageApproximate) "حدود " else "") + it.fa() + " ساله" }).joinToString(" • ")
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        StudentAvatar(r.student.id, size = 96.dp, onClick = onAvatar)
+        Text(r.student.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HeaderStat("فعالیت‌ها", r.completedActivities.fa(), Modifier.weight(1f))
+            HeaderStat("آخرین فعالیت", r.lastActivityAt.relativeDayFa().ifBlank { "—" }, Modifier.weight(1f))
+            HeaderStat("میانگین عملکرد", if (r.summary.sufficientData) r.summary.performance?.percentFa() ?: "—" else "—", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun HeaderStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+    }
+}
+
 @Composable
 private fun ProfileCard(p: EducationalProfile) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("پروفایل آموزشی", style = MaterialTheme.typography.titleMedium)
-            val basic = listOfNotNull(
-                p.student.gradeLabel?.let { "پایه: $it" },
-                p.student.age?.let { "سن: " + (if (p.student.ageApproximate) "حدود " else "") + it.fa() },
-                "فعالیت‌ها: ${p.completedActivities.fa()}",
-                p.lastActivityAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { "آخرین فعالیت: $it" },
-            )
-            Text(basic.joinToString(" • "), style = MaterialTheme.typography.bodyMedium)
             if (p.student.gradeLabel == null && p.student.age == null) Text("سن و پایه ثبت نشده است؛ از منوی دانش‌آموز در صفحه‌ی کلاس می‌توانید آن را اضافه کنید.", style = MaterialTheme.typography.bodySmall)
             p.skills.forEach { k ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

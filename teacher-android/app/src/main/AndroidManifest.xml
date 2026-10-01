@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Only network access. No location, camera, microphone, contacts, SMS or files (privacy: docs). -->
+    <!-- Only network access. No location, microphone, contacts, SMS or storage permissions (privacy: docs).
+         Student pictures are picked with the system photo picker / system camera app (no CAMERA permission) and kept ONLY in app-private storage; they are never uploaded. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application

@@ -1,10 +1,18 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 
 package com.yadbin.teacher.ui.classes
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +35,9 @@ import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.Validators
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
+import com.yadbin.teacher.core.utils.performanceWordFa
+import com.yadbin.teacher.core.utils.relativeDayFa
+import com.yadbin.teacher.core.avatar.StudentAvatarStore
 import com.yadbin.teacher.core.utils.jalaliFa
 import com.yadbin.teacher.core.utils.jalaliDateTimeFa
 import com.yadbin.teacher.domain.models.WeeklyPoint
@@ -41,7 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ClassDetailViewModel(private val repo: Repository, val classId: String) : ViewModel() {
+class ClassDetailViewModel(private val repo: Repository, val classId: String, private val avatars: StudentAvatarStore? = null) : ViewModel() {
     private val _detail = MutableStateFlow<Ui<ClassDetail>>(Ui.Loading)
     val detail: StateFlow<Ui<ClassDetail>> = _detail.asStateFlow()
     private val _report = MutableStateFlow<Ui<ClassReport>>(Ui.Loading)
@@ -84,7 +95,7 @@ class ClassDetailViewModel(private val repo: Repository, val classId: String) : 
     /** Clears results/history only; the student stays in the class. */
     fun clearStudentData(studentId: String) = act("داده‌های دانش‌آموز حذف شد؛ خود دانش‌آموز در کلاس باقی ماند.", { repo.clearStudentData(studentId) })
     /** Removes the student completely, with all data. */
-    fun deleteStudent(studentId: String) = act("دانش‌آموز و همه‌ی داده‌های او حذف شد.", { repo.deleteStudentData(studentId) })
+    fun deleteStudent(studentId: String) = act("دانش‌آموز، داده‌ها و تصویر محلی او حذف شد.", { repo.deleteStudentData(studentId); avatars?.deleteAll(studentId) })
     fun updateClass(name: String, grade: String, school: String?, gradeCode: String?, ageMin: Int?, ageMax: Int?) =
         act("مشخصات کلاس ذخیره شد.", { repo.updateClass(classId, name, grade, school, gradeCode, ageMin, ageMax) })
     fun updateStudent(id: String, name: String, age: Int?, gradeCode: String?, gender: String?, note: String?) =
@@ -106,7 +117,7 @@ fun ClassDetailScreen(
     onOpenStudent: (String) -> Unit,
 ) {
     val c = LocalContainer.current
-    val vm: ClassDetailViewModel = viewModel(key = "class-$classId", factory = VmFactory { ClassDetailViewModel(c.repository, classId) })
+    val vm: ClassDetailViewModel = viewModel(key = "class-$classId", factory = VmFactory { ClassDetailViewModel(c.repository, classId, c.avatars) })
     val detail by vm.detail.collectAsStateWithLifecycle()
     val report by vm.report.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
@@ -115,6 +126,7 @@ fun ClassDetailScreen(
     var showDeleteClass by rememberSaveable { mutableStateOf(false) }
     var showEditClass by rememberSaveable { mutableStateOf(false) }
     var editingStudent by remember { mutableStateOf<StudentRow?>(null) }
+    var avatarFor by remember { mutableStateOf<StudentRow?>(null) }
     var pending by remember { mutableStateOf<Pair<StudentAction, Pair<String, String>>?>(null) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -156,7 +168,7 @@ fun ClassDetailScreen(
                         Tab(tab == 2, { tab = 2 }, text = { Text("گزارش") })
                     }
                     when (tab) {
-                        0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }) { action, id, name -> pending = action to (id to name) }
+                        0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }, { avatarFor = it }) { action, id, name -> pending = action to (id to name) }
                         1 -> ActivitiesTab(d.data, onNewActivity, onOpenActivity)
                         else -> ReportTab(report)
                     }
@@ -179,6 +191,7 @@ fun ClassDetailScreen(
             vm.updateStudent(st.id, name, age, code, gender, note)
         })
     }
+    avatarFor?.let { st -> AvatarEditorDialog(st.id, st.name) { avatarFor = null } }
     if (showAdd) AddStudentsDialog(onDismiss = { showAdd = false }, onSubmit = { text -> showAdd = false; vm.addStudents(text) })
 
     pending?.let { (action, who) ->
@@ -206,38 +219,64 @@ private fun StudentsTab(
     onAdd: () -> Unit,
     onOpen: (String) -> Unit,
     onEdit: (StudentRow) -> Unit,
+    onAvatar: (StudentRow) -> Unit,
     onAction: (StudentAction, String, String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Button(onClick = onAdd, Modifier.padding(16.dp).fillMaxWidth()) { Text("+ دانش‌آموز") }
         if (data.students.isEmpty()) {
-            EmptyState("هنوز دانش‌آموزی اضافه نشده است.")
+            EmptyState(
+                "هنوز دانش‌آموزی به این کلاس اضافه نشده است.", "افزودن دانش‌آموز", onAdd,
+                illustration = { PresetAvatar(3, Modifier.size(88.dp).clip(CircleShape)) },
+            )
         } else {
-            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onAdd, Modifier.padding(16.dp).fillMaxWidth()) { Text("+ دانش‌آموز") }
+            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(data.students, key = { it.id }) { s ->
-                    var menu by remember { mutableStateOf(false) }
-                    Card(Modifier.fillMaxWidth().clickable { onOpen(s.id) }) {
-                        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(s.name, style = MaterialTheme.typography.titleSmall)
-                                val prof = listOfNotNull(s.gradeLabel, s.age?.let { (if (s.ageApproximate) "حدود " else "") + it.fa() + " ساله" }).joinToString(" • ")
-                                if (prof.isNotBlank()) Text(prof, style = MaterialTheme.typography.bodySmall)
-                                Text("فعالیت‌های انجام‌شده: ${s.completedActivities.fa()}", style = MaterialTheme.typography.bodySmall)
-                                if (s.activityStateLabel.isNotBlank()) Text("وضعیت: ${s.activityStateLabel}", style = MaterialTheme.typography.bodySmall)
-                                s.averagePerformance?.let { Text("میانگین عملکرد: ${it.percentFa()}", style = MaterialTheme.typography.bodySmall) }
-                                s.lastActivityAt?.jalaliDateTimeFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
-                            }
-                            Box {
-                                TextButton(onClick = { menu = true }) { Text("⋮") }
-                                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                    DropdownMenuItem(text = { Text("ویرایش سن و پایه") }, onClick = { menu = false; onEdit(s) })
-                                    DropdownMenuItem(text = { Text("حذف از کلاس") }, onClick = { menu = false; onAction(StudentAction.REMOVE, s.id, s.name) })
-                                    DropdownMenuItem(text = { Text("حذف داده‌های دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.CLEAR_DATA, s.id, s.name) })
-                                    DropdownMenuItem(text = { Text("حذف کامل دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.DELETE, s.id, s.name) })
-                                }
-                            }
-                        }
+                    StudentCard(s, onOpen = { onOpen(s.id) }, onAvatar = { onAvatar(s) }, onEdit = { onEdit(s) }, onAction = onAction)
+                }
+            }
+        }
+    }
+}
+
+/** Tappable student card: picture/avatar, name, grade • age and three short status chips (spec §4). */
+@Composable
+private fun StudentCard(s: StudentRow, onOpen: () -> Unit, onAvatar: () -> Unit, onEdit: () -> Unit, onAction: (StudentAction, String, String) -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Row(Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            StudentAvatar(s.id, size = 56.dp, onClick = onAvatar)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(s.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = listOfNotNull(s.gradeLabel, s.age?.let { (if (s.ageApproximate) "حدود " else "") + it.fa() + " ساله" }).joinToString(" • ")
+                if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    StatusChip("${s.completedActivities.fa()} فعالیت انجام شده")
+                    s.lastActivityAt.relativeDayFa().takeIf { it.isNotBlank() }?.let { StatusChip("آخرین فعالیت: $it") }
+                    performanceWordFa(s.averagePerformance)?.let { w ->
+                        val warn = w.startsWith("نیازمند")
+                        StatusChip(
+                            "عملکرد اخیر: $w",
+                            container = if (warn) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
+                            content = if (warn) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
                     }
+                }
+            }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "گزینه‌ها") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text("تغییر تصویر") }, onClick = { menu = false; onAvatar() })
+                    DropdownMenuItem(text = { Text("ویرایش سن و پایه") }, onClick = { menu = false; onEdit() })
+                    DropdownMenuItem(text = { Text("حذف از کلاس") }, onClick = { menu = false; onAction(StudentAction.REMOVE, s.id, s.name) })
+                    DropdownMenuItem(text = { Text("حذف داده‌های دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.CLEAR_DATA, s.id, s.name) })
+                    DropdownMenuItem(text = { Text("حذف کامل دانش‌آموز") }, onClick = { menu = false; onAction(StudentAction.DELETE, s.id, s.name) })
                 }
             }
         }
