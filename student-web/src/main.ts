@@ -12,11 +12,15 @@ async function boot() {
   window.__yadbinReady = true;
   const root = document.getElementById('app')!;
   root.before(offlineBanner());
-  const ui = createDomUi(root);
   const token = tokenFromPath(location.pathname);
+  const api = createApi(import.meta.env.VITE_API_BASE ?? '');
+  const ui = createDomUi(root, async () => {
+    if (!token || !api.progress) return null;
+    const r = await api.progress(token);
+    return r.kind === 'ok' ? r.data : null;
+  });
   if (!token) { ui.error('invalid', 'این لینک معتبر نیست.'); return; }
   if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(() => {});
-  const api = createApi(import.meta.env.VITE_API_BASE ?? '');
   window.addEventListener('unhandledrejection', () => ui.error('generic', 'مشکلی پیش آمد. صفحه را دوباره باز کنید.', () => location.reload()));
   const store = await openStore();
   try { await runSession({ token, api, store, ui }); }

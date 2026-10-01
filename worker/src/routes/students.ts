@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import { getOwnedClass, getOwnedStudent } from '../db/queries';
-import { buildStudentReport } from '../services/metrics';
+import { buildStudentReport, studentHistory } from '../services/metrics';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { parse, studentSchema } from '../validation/schemas';
@@ -18,6 +18,11 @@ export async function createStudent(req: Request, env: Env, teacherId: string) {
 
 export async function getStudent(env: Env, teacherId: string, id: string) {
   return json(await buildStudentReport(env.DB, await getOwnedStudent(env.DB, teacherId, id)));
+}
+
+export async function getStudentHistory(env: Env, teacherId: string, id: string) {
+  const s = await getOwnedStudent(env.DB, teacherId, id);
+  return json({ student: { id: s.id, name: s.display_name }, history: await studentHistory(env.DB, id) });
 }
 
 /** DELETE DATA: permanently removes the student and every result (explicit ordered deletes; no reliance on FK cascade). */

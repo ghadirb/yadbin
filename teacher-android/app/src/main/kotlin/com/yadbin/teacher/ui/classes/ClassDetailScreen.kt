@@ -2,6 +2,7 @@
 
 package com.yadbin.teacher.ui.classes
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +26,8 @@ import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.Validators
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
+import com.yadbin.teacher.core.utils.toFa
+import com.yadbin.teacher.domain.models.WeeklyPoint
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.ClassDetail
 import com.yadbin.teacher.domain.models.ClassReport
@@ -74,6 +79,9 @@ class ClassDetailViewModel(private val repo: Repository, val classId: String) : 
     fun removeFromClass(studentId: String) = act("دانش‌آموز از کلاس حذف شد (اطلاعات او حفظ شد).", { repo.removeFromClass(classId, studentId) })
     fun deleteStudentData(studentId: String) = act("دانش‌آموز و همه‌ی داده‌های او حذف شد.", { repo.deleteStudentData(studentId) })
     fun deleteClass(onDone: () -> Unit) = act(null, { repo.deleteClass(classId) }, onDone)
+    /** Archive keeps all data; the class moves to the archived list on the dashboard. */
+    fun archive(archived: Boolean, onDone: () -> Unit = {}) =
+        act(if (archived) "کلاس آرشیو شد." else "کلاس از آرشیو خارج شد.", { repo.setClassArchived(classId, archived) }, onDone)
 }
 
 private enum class StudentAction { REMOVE, DELETE }
@@ -110,7 +118,13 @@ fun ClassDetailScreen(
 
     val title = (detail as? Ui.Ready)?.data?.cls?.name ?: "کلاس"
     Scaffold(
-        topBar = { YadbinTopBar(title, onBack, actions = { TextButton(onClick = { showDeleteClass = true }) { Text("حذف کلاس") } }) },
+        topBar = {
+            YadbinTopBar(title, onBack, actions = {
+                val isArchived = (detail as? Ui.Ready)?.data?.cls?.archived == true
+                TextButton(onClick = { if (isArchived) vm.archive(false) else vm.archive(true, onBack) }) { Text(if (isArchived) "بازگردانی" else "آرشیو") }
+                TextButton(onClick = { showDeleteClass = true }) { Text("حذف کلاس") }
+            })
+        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -173,6 +187,9 @@ private fun StudentsTab(
                             Column(Modifier.weight(1f)) {
                                 Text(s.name, style = MaterialTheme.typography.titleSmall)
                                 Text("فعالیت‌های انجام‌شده: ${s.completedActivities.fa()}", style = MaterialTheme.typography.bodySmall)
+                                if (s.activityStateLabel.isNotBlank()) Text("وضعیت: ${s.activityStateLabel}", style = MaterialTheme.typography.bodySmall)
+                                s.averagePerformance?.let { Text("میانگین عملکرد: ${it.percentFa()}", style = MaterialTheme.typography.bodySmall) }
+                                s.lastActivityAt?.let { Text("آخرین فعالیت: ${it.take(10).toFa()}", style = MaterialTheme.typography.bodySmall) }
                             }
                             Box {
                                 TextButton(onClick = { menu = true }) { Text("⋮") }
@@ -201,8 +218,8 @@ private fun ActivitiesTab(data: ClassDetail, onNew: () -> Unit, onOpen: (String)
                 items(data.activities, key = { it.id }) { a ->
                     Card(Modifier.fillMaxWidth().clickable { onOpen(a.id) }) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(Labels.game(a.gameType), style = MaterialTheme.typography.titleSmall)
-                            Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${Labels.activityStatus(a.status)}", style = MaterialTheme.typography.bodySmall)
+                            Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleSmall)
+                            Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
                             Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -221,7 +238,14 @@ private fun ReportTab(report: Ui<ClassReport>) {
             val r = report.data
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("آمار کلی فعالیت", style = MaterialTheme.typography.titleMedium)
+                if (r.overallLabel.isNotBlank()) {
+                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) {
+                        Text(r.overallLabel, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 StatLine("تعداد دانش‌آموزان", r.studentCount.fa())
+                StatLine("دانش‌آموزان فعال (۳۰ روز اخیر)", r.activeStudents.fa())
+                r.averagePerformance?.let { StatLine("میانگین عملکرد کلاس", it.percentFa()) }
                 StatLine("فعالیت‌های ایجادشده", r.activitiesCreated.fa())
                 StatLine("لینک‌های ارسال‌شده", r.assignedLinks.fa())
                 StatLine("تعداد تکمیل‌شده", r.completedSessions.fa())
@@ -229,13 +253,38 @@ private fun ReportTab(report: Ui<ClassReport>) {
                 if (r.byGame.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text("به تفکیک بازی", style = MaterialTheme.typography.titleSmall)
-                    r.byGame.forEach { g -> StatLine(Labels.game(g.game), "${g.completed.fa()} از ${g.assigned.fa()}") }
+                    r.byGame.forEach { g ->
+                        StatLine(Labels.game(g.game), "${g.completed.fa()} از ${g.assigned.fa()}" + (g.averagePerformance?.let { " • ${it.percentFa()}" } ?: ""))
+                    }
+                }
+                if (r.weekly.any { it.completed > 0 }) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("فعالیت‌های انجام‌شده در ۶ هفته‌ی اخیر", style = MaterialTheme.typography.titleSmall)
+                    WeeklyBars(r.weekly)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("گزارش کلاس فقط آمار کلی است؛ رتبه‌بندی یا مقایسه‌ی دانش‌آموزان وجود ندارد.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
+}
+
+/** Simple bars: completed sessions per week (class as a whole; never per student). */
+@Composable
+private fun WeeklyBars(weeks: List<WeeklyPoint>) {
+    val bar = MaterialTheme.colorScheme.primary
+    val base = MaterialTheme.colorScheme.outlineVariant
+    val max = (weeks.maxOfOrNull { it.completed } ?: 0).coerceAtLeast(1)
+    Canvas(Modifier.fillMaxWidth().height(100.dp).padding(vertical = 8.dp)) {
+        val n = weeks.size
+        val slot = size.width / n
+        val bw = slot * 0.6f
+        weeks.forEachIndexed { i, w ->
+            val h = size.height * (w.completed.toFloat() / max)
+            drawRect(if (w.completed > 0) bar else base, topLeft = Offset(i * slot + (slot - bw) / 2, size.height - h.coerceAtLeast(2f)), size = Size(bw, h.coerceAtLeast(2f)))
+        }
+    }
+    Text(weeks.joinToString("  ") { it.completed.fa() }, style = MaterialTheme.typography.labelSmall)
 }
 
 @Composable

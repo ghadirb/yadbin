@@ -12,7 +12,10 @@ function play(root: HTMLElement, game: GameType, q: any, info: any) {
   return game === 'memory' ? playMemory(root, q, info) : game === 'attention' ? playAttention(root, q, info) : playProblem(root, q, info);
 }
 
-export function createDomUi(root: HTMLElement): GameUi {
+export interface ProgressView { message: string; games: { gameName: string; completed: number }[] }
+
+/** [loadProgress] returns the child's own progress (or null when offline/unavailable). No names, no scores. */
+export function createDomUi(root: HTMLElement, loadProgress?: () => Promise<ProgressView | null>): GameUi {
   return {
     async welcome() {
       clear(root);
@@ -37,12 +40,31 @@ export function createDomUi(root: HTMLElement): GameUi {
       await waitForClick(ready);
     },
     playQuestion: (game, q, info) => play(root, game, q, info),
-    end(kind) {
+    end(kind, accuracy) {
       clear(root);
       const msg = kind === 'sent' ? ['آفرین! 🎉', 'فعالیت تمام شد. می‌توانی این صفحه را ببندی.']
         : kind === 'saved' ? ['آفرین! 🎉', 'نتیجه روی دستگاه ذخیره شد و بعداً ارسال می‌شود.']
         : ['این فعالیت قبلاً انجام شده است.', ''];
-      root.append(h('section', { class: 'card center', role: 'status' }, h('h1', {}, msg[0]), msg[1] ? h('p', {}, msg[1]) : null));
+      // Spec 4.2: short encouraging feedback. Wording only, never a score or a comparison.
+      const fb = kind === 'already' || accuracy === undefined ? [] : [
+        accuracy === null || accuracy >= 0.5 ? (accuracy !== null && accuracy >= 0.8 ? 'عملکرد خیلی خوب بود.' : 'عملکرد خوب بود.') : 'تمرین بیشتر کمک می‌کند؛ تلاشت عالی بود.',
+        'می‌توانی مرحله بعد را امتحان کنی.',
+      ];
+      const card = h('section', { class: 'card center', role: 'status' }, h('h1', {}, msg[0]), msg[1] ? h('p', {}, msg[1]) : null, ...fb.map((l) => h('p', { class: 'end-line' }, l)));
+      root.append(card);
+      // Spec 4.1: personal progress, shown on request and only once the result has reached the server.
+      if (loadProgress && kind === 'sent') {
+        const box = h('div', { class: 'my-progress' });
+        const btn = bigButton('پیشرفت من', async () => {
+          btn.disabled = true;
+          const p = await loadProgress();
+          clear(box);
+          if (!p) { box.append(h('p', {}, 'الان نمی‌توانم پیشرفتت را نشان بدهم.')); btn.disabled = false; return; }
+          box.append(h('p', {}, p.message), ...p.games.map((g) => h('p', {}, `${g.gameName}: ${g.completed}`)));
+          btn.remove();
+        });
+        card.append(btn, box);
+      }
     },
     error(kind, message, retry) {
       clear(root);

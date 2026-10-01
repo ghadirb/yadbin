@@ -8,3 +8,8 @@
 - `game_results.session_id` کلید اصلی است (Idempotency) و `sample_count` اضافه شد.
 - جدول `questions` ساخته شده اما **در MVP استفاده نمی‌شود**؛ بانک سؤال نسخه‌ی ۱ در کد است (`worker/src/questions/bank.ts`) و جدول برای محتوای مدیریت‌شده‌ی بعدی رزرو است.
 - ایندکس روی `teacher_id`، `class_id`، `student_id`، `token` (UNIQUE) و جستجوی سؤال.
+
+## v1.1 — migration `0004_v1_1_expansion.sql`
+فقط افزایشی و nullable (داده‌ی قبلی معتبر می‌ماند): `classes.archived_at`، `activities.title|description|suggested_minutes|archived_at`.
+«پایان‌یافته» ستون ندارد و از `status`/`expires_at`/تعداد تکمیل‌ها محاسبه می‌شود، چون SQLite امکان تغییر CHECK قدیمی را بدون بازسازی جدول نمی‌دهد.
+**قبل از دیپلوی:** `npm run db:migrate:remote` (یا اجرای workflow دیپلوی).

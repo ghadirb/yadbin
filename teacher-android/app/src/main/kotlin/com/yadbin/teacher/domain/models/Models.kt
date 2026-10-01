@@ -33,6 +33,7 @@ import kotlinx.serialization.json.JsonElement
     val createdAt: String? = null,
     val studentCount: Int = 0,
     val recentActivityCount: Int = 0,
+    val archived: Boolean = false,
 )
 @Serializable data class ClassesResponse(val classes: List<ClassSummary>)
 @Serializable data class ClassEnvelope(@SerialName("class") val cls: ClassSummary)
@@ -42,6 +43,10 @@ import kotlinx.serialization.json.JsonElement
     val name: String,
     val completedActivities: Int = 0,
     val lastActivityAt: String? = null,
+    val openActivities: Int = 0,
+    /** null until the server has enough data (same rule as the report) */
+    val averagePerformance: Double? = null,
+    val activityStateLabel: String = "",
 )
 @Serializable data class ActivityRow(
     val id: String,
@@ -49,6 +54,9 @@ import kotlinx.serialization.json.JsonElement
     val difficultyMode: String,
     val questionCount: Int,
     val status: String,
+    val title: String? = null,
+    val lifecycle: String = "active",
+    val lifecycleLabel: String = "",
     val createdAt: String? = null,
     val expiresAt: String? = null,
     val assigned: Int = 0,
@@ -72,6 +80,11 @@ import kotlinx.serialization.json.JsonElement
     val status: String,
     val createdAt: String? = null,
     val expiresAt: String? = null,
+    val title: String? = null,
+    val description: String? = null,
+    val suggestedMinutes: Int? = null,
+    val lifecycle: String = "active",
+    val lifecycleLabel: String = "",
 )
 @Serializable data class ActivityLink(val studentId: String, val name: String, val token: String, val url: String)
 @Serializable data class ActivityCreated(val activity: ActivityInfo, val links: List<ActivityLink> = emptyList())
@@ -131,16 +144,25 @@ import kotlinx.serialization.json.JsonElement
     val label: String = "پیشنهاد سیستم",
     val gameName: String = "",
 )
+@Serializable data class StudentSummary(
+    val sessions: Int = 0,
+    val successes: Int = 0,
+    val performance: Double? = null,
+    val sufficientData: Boolean = false,
+    val timeSpentMinutes: Int = 0,
+)
 @Serializable data class StudentReport(
     val student: StudentRef,
     val completedActivities: Int = 0,
     val lastActivityAt: String? = null,
+    val summary: StudentSummary = StudentSummary(),
     val skills: List<SkillCard> = emptyList(),
     val suggestions: List<Suggestion> = emptyList(),
     val suggestionFallback: String? = null,
     val notice: String = "",
 )
-@Serializable data class ClassGameStat(val game: String, val activities: Int = 0, val assigned: Int = 0, val completed: Int = 0)
+@Serializable data class ClassGameStat(val game: String, val activities: Int = 0, val assigned: Int = 0, val completed: Int = 0, val averagePerformance: Double? = null)
+@Serializable data class WeeklyPoint(val weekStart: String, val completed: Int = 0, val averagePerformance: Double? = null)
 @Serializable data class ClassReportClass(val id: String, val name: String, val grade: String)
 @Serializable data class ClassReport(
     @SerialName("class") val cls: ClassReportClass,
@@ -149,5 +171,25 @@ import kotlinx.serialization.json.JsonElement
     val assignedLinks: Int = 0,
     val completedSessions: Int = 0,
     val completionRate: Double? = null,
+    val activeStudents: Int = 0,
+    val averagePerformance: Double? = null,
+    val overallLabel: String = "",
     val byGame: List<ClassGameStat> = emptyList(),
+    val weekly: List<WeeklyPoint> = emptyList(),
 )
+
+// ---- v1.1 ------------------------------------------------------------------------------------
+@Serializable data class LinksResponse(val links: List<ActivityLink> = emptyList())
+@Serializable data class HistoryItem(
+    val activityId: String,
+    val title: String = "",
+    val gameType: String = "",
+    val gameName: String = "",
+    val status: String = "",
+    val startedAt: String? = null,
+    val completedAt: String? = null,
+    val accuracy: Double? = null,
+    val sampleCount: Int = 0,
+    val durationSeconds: Int? = null,
+)
+@Serializable data class StudentHistory(val student: StudentRef, val history: List<HistoryItem> = emptyList())

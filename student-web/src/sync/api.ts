@@ -6,6 +6,8 @@ export type ApiResult<T> =
 export interface PlayApi {
   getPlay(token: string): Promise<ApiResult<any>>;
   complete(token: string, payload: unknown): Promise<ApiResult<any>>;
+  /** Child's own progress (v1.1). Optional so older fakes keep working. */
+  progress?(token: string): Promise<ApiResult<any>>;
 }
 
 export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(...a), timeoutMs = 8000): PlayApi {
@@ -24,6 +26,7 @@ export function createApi(base = '', fetchImpl: typeof fetch = (...a) => fetch(.
   }
   return {
     getPlay: (t) => call('GET', `/api/play/${encodeURIComponent(t)}`),
+    progress: (t) => call('GET', `/api/play/${encodeURIComponent(t)}/progress`),
     complete: (t, p) => call('POST', `/api/play/${encodeURIComponent(t)}/complete`, p),
   };
 }

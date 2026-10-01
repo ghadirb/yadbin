@@ -11,7 +11,7 @@ export interface GameUi {
   tutorial(game: GameType): Promise<void>;
   /** Renders one question; resolves with the raw event (and, for scoring the adaptive block, whether it was correct). */
   playQuestion(game: GameType, q: any, info: QuestionInfo): Promise<{ event: any; correct?: boolean }>;
-  end(kind: 'sent' | 'saved' | 'already'): void;
+  end(kind: 'sent' | 'saved' | 'already', accuracy?: number | null): void;
   error(kind: 'invalid' | 'expired' | 'canceled' | 'network' | 'generic', message: string, retry?: () => void): void;
 }
 export interface SessionDeps { token: string; api: PlayApi; store: KvStore; ui: GameUi; now?: () => number; retryIntervalMs?: number; firstLoadRetryDelayMs?: number }
@@ -96,7 +96,8 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
     s.game === 'memory' ? scoreMemory(s.events) : s.game === 'attention' ? scoreAttention(s.events) : scoreProblemSolving(s.events);
   s.finished = true; await save();
   const outcome = await submitResult(token, { sessionId: s.sessionId, events: s.events, durationMs: Math.round(s.activeMs), localResult: local_result }, api, store);
-  if (outcome === 'saved_locally') { ui.end('saved'); autoRetry(token, api, store, () => ui.end('sent'), d.retryIntervalMs); }
-  else ui.end(outcome === 'sent' ? 'sent' : 'already');
+  const acc = local_result.accuracy ?? null; // used only to pick an encouraging sentence; never shown as a number
+  if (outcome === 'saved_locally') { ui.end('saved', acc); autoRetry(token, api, store, () => ui.end('sent', acc), d.retryIntervalMs); }
+  else ui.end(outcome === 'sent' ? 'sent' : 'already', acc);
   return 'finished';
 }

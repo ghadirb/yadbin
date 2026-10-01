@@ -67,3 +67,41 @@ class ModelsTest {
         assertNotEquals(m.flatMap { it.toList() }, Qr.matrix("https://yadbin.pages.dev/play/OTHER").flatMap { it.toList() })
     }
 }
+
+/** v1.1: new server fields parse, and an OLD server response (without them) still parses with safe defaults. */
+class ModelsV11Test {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    @Test fun class_detail_with_v11_fields() {
+        val d = json.decodeFromString(ClassDetail.serializer(), """
+          {"class":{"id":"c1","name":"سوم","grade":"سوم","archived":true,"archivedAt":"2026-09-01T00:00:00Z"},
+           "students":[{"id":"s1","name":"علی","completedActivities":2,"openActivities":1,"lastActivityAt":"2026-09-01T10:00:00Z","averagePerformance":0.8,"sufficientData":true,"activityState":"open","activityStateLabel":"فعالیت باز دارد"}],
+           "activities":[{"id":"a1","gameType":"memory","difficultyMode":"easy","questionCount":5,"status":"active","title":"رنگ‌ها","lifecycle":"ended","lifecycleLabel":"پایان‌یافته","assigned":3,"completed":3}]}""")
+        assertTrue(d.cls.archived)
+        assertEquals(0.8, d.students.single().averagePerformance!!, 0.0001)
+        assertEquals("فعالیت باز دارد", d.students.single().activityStateLabel)
+        assertEquals("پایان‌یافته", d.activities.single().lifecycleLabel)
+        assertEquals("رنگ‌ها", d.activities.single().title)
+    }
+
+    @Test fun old_server_response_still_parses() {
+        val d = json.decodeFromString(ClassDetail.serializer(), """
+          {"class":{"id":"c1","name":"سوم","grade":"سوم"},"students":[{"id":"s1","name":"علی"}],
+           "activities":[{"id":"a1","gameType":"memory","difficultyMode":"easy","questionCount":5,"status":"active"}]}""")
+        assertFalse(d.cls.archived)
+        assertNull(d.students.single().averagePerformance)
+        assertEquals("active", d.activities.single().lifecycle)
+        assertNull(d.activities.single().title)
+    }
+
+    @Test fun class_report_and_history_parse() {
+        val r = json.decodeFromString(com.yadbin.teacher.domain.models.ClassReport.serializer(), """
+          {"class":{"id":"c1","name":"س","grade":"س"},"studentCount":3,"activeStudents":2,"averagePerformance":0.77,"overallLabel":"x",
+           "byGame":[{"game":"memory","activities":1,"assigned":3,"completed":2,"averagePerformance":0.77}],
+           "weekly":[{"weekStart":"2026-09-26","completed":2,"averagePerformance":0.77},{"weekStart":"2026-09-19","completed":0,"averagePerformance":null}]}""")
+        assertEquals(2, r.activeStudents); assertEquals(2, r.weekly.size); assertNull(r.weekly[1].averagePerformance)
+        val h = json.decodeFromString(com.yadbin.teacher.domain.models.StudentHistory.serializer(), """
+          {"student":{"id":"s1","name":"علی"},"history":[{"activityId":"a1","title":"رنگ‌ها","gameType":"memory","status":"completed","accuracy":0.8,"sampleCount":5,"durationSeconds":120}]}""")
+        assertEquals(120, h.history.single().durationSeconds)
+    }
+}

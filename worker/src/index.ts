@@ -20,23 +20,33 @@ add('POST', '/api/auth/register', false, (req, env) => auth.register(req, env));
 add('POST', '/api/auth/login', false, (req, env) => auth.login(req, env));
 add('POST', '/api/auth/reset-password', false, (req, env) => auth.resetPassword(req, env));
 
-add('GET', '/api/classes', true, (_r, env, _p, t) => classes.listClasses(env, t));
+add('GET', '/api/classes', true, (req, env, _p, t) => classes.listClasses(env, t, req));
 add('POST', '/api/classes', true, (req, env, _p, t) => classes.createClass(req, env, t));
 add('GET', '/api/classes/:id', true, (_r, env, p, t) => classes.getClass(env, t, p.id));
 add('PUT', '/api/classes/:id', true, (req, env, p, t) => classes.updateClass(req, env, t, p.id));
 add('DELETE', '/api/classes/:id', true, (_r, env, p, t) => classes.deleteClass(env, t, p.id));
+add('POST', '/api/classes/:id/archive', true, (_r, env, p, t) => classes.setClassArchived(env, t, p.id, true));
+add('POST', '/api/classes/:id/unarchive', true, (_r, env, p, t) => classes.setClassArchived(env, t, p.id, false));
 add('POST', '/api/classes/:id/students', true, (req, env, p, t) => classes.addStudentsToClass(req, env, t, p.id));
 add('DELETE', '/api/classes/:id/students/:sid', true, (_r, env, p, t) => classes.removeStudentFromClass(env, t, p.id, p.sid));
 
 add('POST', '/api/students', true, (req, env, _p, t) => students.createStudent(req, env, t));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));
+add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStudentHistory(env, t, p.id));
 add('DELETE', '/api/students/:id', true, (_r, env, p, t) => students.deleteStudent(env, t, p.id));
 
 add('POST', '/api/activities', true, (req, env, _p, t) => activities.createActivity(req, env, t));
+add('GET', '/api/activities', true, (req, env, _p, t) => activities.listActivities(req, env, t));
 add('GET', '/api/activities/:id', true, (_r, env, p, t) => activities.getActivity(env, t, p.id));
+add('PUT', '/api/activities/:id', true, (req, env, p, t) => activities.updateActivity(req, env, t, p.id));
+add('POST', '/api/activities/:id/duplicate', true, (req, env, p, t) => activities.duplicateActivity(req, env, t, p.id));
+add('POST', '/api/activities/:id/archive', true, (_r, env, p, t) => activities.setArchived(env, t, p.id, true));
+add('POST', '/api/activities/:id/unarchive', true, (_r, env, p, t) => activities.setArchived(env, t, p.id, false));
+add('POST', '/api/activities/:id/regenerate-links', true, (req, env, p, t) => activities.regenerateLinks(req, env, t, p.id));
 add('POST', '/api/activities/:id/cancel', true, (_r, env, p, t) => activities.cancelActivity(env, t, p.id));
 
 add('GET', '/api/play/:token', false, (req, env, p) => play.getPlay(env, p.token, req));
+add('GET', '/api/play/:token/progress', false, (req, env, p) => play.getProgress(env, p.token, req));
 add('POST', '/api/play/:token/complete', false, (req, env, p) => play.completePlay(req, env, p.token));
 
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
@@ -58,9 +68,11 @@ export default {
     const cors = corsHeaders(env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const url = new URL(req.url);
-    const segs = url.pathname.split('/').filter(Boolean);
+    // API versioning (spec 6.1): /api/v1/* is the stable alias of /api/*. Old clients keep using /api/*.
+    const path = url.pathname.startsWith('/api/v1/') || url.pathname === '/api/v1' ? '/api' + url.pathname.slice('/api/v1'.length) : url.pathname;
+    const segs = path.split('/').filter(Boolean);
     try {
-      if (url.pathname === '/api/health') return withCors(json({ ok: true }), cors);
+      if (path === '/api/health') return withCors(json({ ok: true }), cors);
       let pathMatched = false;
       for (const r of routes) {
         const p = match(r, req.method, segs);
@@ -76,8 +88,11 @@ export default {
         const body = e.status === 429 ? undefined : e.extra;
         return withCors(json({ error: e.code, message: e.message, details: body }, e.status, retry ? { 'Retry-After': String(retry) } : {}), cors);
       }
-      console.error('unhandled', e instanceof Error ? e.stack : e);
-      return withCors(json({ error: 'internal_error', message: 'خطای داخلی سرور.' }, 500), cors);
+      // Developer-facing error log (spec 6.2): structured, one line, no body/PII. The id is also sent to the client
+      // so a teacher can report it ("کد پیگیری") and it can be found in `wrangler tail`.
+      const errorId = crypto.randomUUID().slice(0, 8);
+      console.error(JSON.stringify({ level: 'error', errorId, method: req.method, path, message: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack?.split('\n').slice(0, 6) : undefined }));
+      return withCors(json({ error: 'internal_error', message: 'خطای داخلی سرور.', errorId }, 500), cors);
     }
   },
 } satisfies ExportedHandler<Env>;
