@@ -22,6 +22,7 @@ import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.secondsFa
 import com.yadbin.teacher.core.utils.jalaliFa
+import com.yadbin.teacher.core.utils.jalaliDateTimeFa
 import com.yadbin.teacher.domain.models.HistoryItem
 import com.yadbin.teacher.domain.models.ActivityPrefill
 import com.yadbin.teacher.domain.models.EducationalProfile
@@ -120,7 +121,7 @@ private fun ReportContent(
                     Column(Modifier.padding(12.dp)) {
                         Text(h.title.ifBlank { Labels.game(h.gameType) }, style = MaterialTheme.typography.titleSmall)
                         val state = when (h.status) { "completed" -> "انجام شد"; "started" -> "در حال انجام"; else -> "شروع نشده" }
-                        val date = (h.completedAt ?: h.startedAt).jalaliFa().takeIf { it.isNotBlank() }
+                        val date = (h.completedAt ?: h.startedAt).jalaliDateTimeFa().takeIf { it.isNotBlank() }
                         Text(listOfNotNull(state, date).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -227,7 +228,7 @@ private fun ProfileCard(p: EducationalProfile) {
                 p.student.gradeLabel?.let { "پایه: $it" },
                 p.student.age?.let { "سن: " + (if (p.student.ageApproximate) "حدود " else "") + it.fa() },
                 "فعالیت‌ها: ${p.completedActivities.fa()}",
-                p.lastActivityAt.jalaliFa().takeIf { it.isNotBlank() }?.let { "آخرین فعالیت: $it" },
+                p.lastActivityAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { "آخرین فعالیت: $it" },
             )
             Text(basic.joinToString(" • "), style = MaterialTheme.typography.bodyMedium)
             if (p.student.gradeLabel == null && p.student.age == null) Text("سن و پایه ثبت نشده است؛ از منوی دانش‌آموز در صفحه‌ی کلاس می‌توانید آن را اضافه کنید.", style = MaterialTheme.typography.bodySmall)

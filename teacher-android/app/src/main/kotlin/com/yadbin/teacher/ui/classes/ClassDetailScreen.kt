@@ -28,6 +28,7 @@ import com.yadbin.teacher.core.utils.Validators
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.jalaliFa
+import com.yadbin.teacher.core.utils.jalaliDateTimeFa
 import com.yadbin.teacher.domain.models.WeeklyPoint
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.ClassDetail
@@ -224,7 +225,7 @@ private fun StudentsTab(
                                 Text("فعالیت‌های انجام‌شده: ${s.completedActivities.fa()}", style = MaterialTheme.typography.bodySmall)
                                 if (s.activityStateLabel.isNotBlank()) Text("وضعیت: ${s.activityStateLabel}", style = MaterialTheme.typography.bodySmall)
                                 s.averagePerformance?.let { Text("میانگین عملکرد: ${it.percentFa()}", style = MaterialTheme.typography.bodySmall) }
-                                s.lastActivityAt?.jalaliFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
+                                s.lastActivityAt?.jalaliDateTimeFa()?.takeIf { it.isNotBlank() }?.let { Text("آخرین فعالیت: $it", style = MaterialTheme.typography.bodySmall) }
                             }
                             Box {
                                 TextButton(onClick = { menu = true }) { Text("⋮") }
@@ -259,7 +260,7 @@ private fun ActivitiesTab(data: ClassDetail, onNew: () -> Unit, onOpen: (String)
                             Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
                             val chips = listOfNotNull(a.levelLabel, Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels
                             if (chips.isNotEmpty()) { Spacer(Modifier.height(4.dp)); InfoChips(chips) }
-                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
