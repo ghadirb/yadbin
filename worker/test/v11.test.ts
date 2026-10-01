@@ -270,3 +270,50 @@ describe('v1.1 error handling (spec 6.2)', () => {
     expect(nf.status).toBe(404); expect(JSON.stringify(nf.data)).not.toMatch(/SELECT|stack|D1_/);
   });
 });
+
+describe('v1.1 clear student data keeps the student', () => {
+  it('DELETE /students/:id/data erases results/history/metrics but the student stays in the class', async () => {
+    const { token } = await registerTeacher(t);
+    const { classId } = await setup(token, 3);
+    const a1 = await makeActivity(token, classId), a2 = await makeActivity(token, classId);
+    const sid = a1.links[0].studentId, other = a1.links[1].studentId;
+    await play(a1.links[0].url, 5); await play(a2.links.find((l) => l.studentId === sid)!.url, 4);
+    await play(a1.links[1].url, 5);
+    expect((await t.api('GET', `/api/students/${sid}`, undefined, token)).data.completedActivities).toBe(2);
+
+    const r = await t.api('DELETE', `/api/students/${sid}/data`, undefined, token);
+    expect(r.status).toBe(200);
+    expect(r.data).toMatchObject({ ok: true, clearedActivities: 2, student: { id: sid } });
+
+    // student still exists, still in the class, but empty
+    const rep = (await t.api('GET', `/api/students/${sid}`, undefined, token)).data;
+    expect(rep.completedActivities).toBe(0); expect(rep.summary.sessions).toBe(0);
+    expect((await t.api('GET', `/api/students/${sid}/history`, undefined, token)).data.history).toEqual([]);
+    const cls = (await t.api('GET', `/api/classes/${classId}`, undefined, token)).data;
+    const row = cls.students.find((s: any) => s.id === sid);
+    expect(row).toMatchObject({ completedActivities: 0, lastActivityAt: null, activityState: 'no_activity' });
+    // no leftovers in any table
+    for (const q of [
+      'SELECT COUNT(*) AS n FROM activity_students WHERE student_id = ?',
+      'SELECT COUNT(*) AS n FROM student_metrics WHERE student_id = ?',
+      'SELECT COUNT(*) AS n FROM game_sessions WHERE activity_student_id IN (SELECT id FROM activity_students WHERE student_id = ?)',
+    ]) expect((await t.db.prepare(q).bind(sid).first<any>()).n).toBe(0);
+    expect((await t.db.prepare('SELECT COUNT(*) AS n FROM students WHERE id = ?').bind(sid).first<any>()).n).toBe(1);
+
+    // other students are untouched, and the student can be given new activities
+    expect((await t.api('GET', `/api/students/${other}`, undefined, token)).data.completedActivities).toBe(1);
+    const fresh = await t.api('POST', '/api/activities', { classId, gameType: 'memory', studentIds: [sid] }, token);
+    expect(fresh.status).toBe(201);
+    // the full-delete endpoint still works and is separate
+    expect((await t.api('DELETE', `/api/students/${sid}`, undefined, token)).status).toBe(200);
+    expect((await t.api('GET', `/api/students/${sid}`, undefined, token)).status).toBe(404);
+  });
+  it('cannot clear another teacher\'s student', async () => {
+    const A = await registerTeacher(t), B = await registerTeacher(t);
+    const { classId } = await setup(A.token, 1);
+    const act = await makeActivity(A.token, classId);
+    await play(act.links[0].url, 5);
+    expect((await t.api('DELETE', `/api/students/${act.links[0].studentId}/data`, undefined, B.token)).status).toBe(404);
+    expect((await t.api('GET', `/api/students/${act.links[0].studentId}`, undefined, A.token)).data.completedActivities).toBe(1);
+  });
+});

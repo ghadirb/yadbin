@@ -61,6 +61,7 @@ class Repository(
     suspend fun deleteClass(id: String) = api.deleteClass(id)
     suspend fun addStudents(classId: String, text: String): AddStudentsResponse = api.addStudents(classId, text)
     suspend fun removeFromClass(classId: String, studentId: String) = api.removeFromClass(classId, studentId)
+    suspend fun clearStudentData(studentId: String) = api.clearStudentData(studentId)
     suspend fun deleteStudentData(studentId: String) = api.deleteStudentData(studentId)
     suspend fun createActivity(classId: String, gameType: String, difficulty: String, questionCount: Int, studentIds: List<String>?): ActivityCreated =
         api.createActivity(classId, gameType, difficulty, questionCount, studentIds)

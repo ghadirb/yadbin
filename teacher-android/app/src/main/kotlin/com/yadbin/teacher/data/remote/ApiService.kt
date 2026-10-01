@@ -42,7 +42,10 @@ class ApiService(private val c: ApiClient) {
         c.request("DELETE", "/api/classes/$classId/students/$studentId", OkResponse.serializer())
     }
 
-    /** Permanently deletes the student and all results. */
+    /** Erases all results/history of the student but KEEPS the student in the class. */
+    suspend fun clearStudentData(studentId: String) { c.request("DELETE", "/api/students/$studentId/data", ClearDataResponse.serializer()) }
+
+    /** Permanently deletes the student AND all results. */
     suspend fun deleteStudentData(studentId: String) { c.request("DELETE", "/api/students/$studentId", OkResponse.serializer()) }
 
     suspend fun createActivity(classId: String, gameType: String, difficulty: String, questionCount: Int, studentIds: List<String>?): ActivityCreated {
@@ -80,3 +83,6 @@ class ApiService(private val c: ApiClient) {
 
 @kotlinx.serialization.Serializable
 data class OkResponse(val ok: Boolean = true)
+
+@kotlinx.serialization.Serializable
+data class ClearDataResponse(val ok: Boolean = true, val clearedActivities: Int = 0)

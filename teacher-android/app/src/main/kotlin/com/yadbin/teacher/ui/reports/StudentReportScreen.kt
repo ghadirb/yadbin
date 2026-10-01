@@ -21,7 +21,7 @@ import com.yadbin.teacher.core.utils.Labels
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.core.utils.percentFa
 import com.yadbin.teacher.core.utils.secondsFa
-import com.yadbin.teacher.core.utils.toFa
+import com.yadbin.teacher.core.utils.jalaliFa
 import com.yadbin.teacher.domain.models.HistoryItem
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.SeriesPoint
@@ -102,7 +102,7 @@ private fun ReportContent(r: StudentReport, history: List<HistoryItem>) {
                     Column(Modifier.padding(12.dp)) {
                         Text(h.title.ifBlank { Labels.game(h.gameType) }, style = MaterialTheme.typography.titleSmall)
                         val state = when (h.status) { "completed" -> "انجام شد"; "started" -> "در حال انجام"; else -> "شروع نشده" }
-                        val date = (h.completedAt ?: h.startedAt)?.take(10)?.toFa()
+                        val date = (h.completedAt ?: h.startedAt).jalaliFa().takeIf { it.isNotBlank() }
                         Text(listOfNotNull(state, date).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
                     }
                 }
