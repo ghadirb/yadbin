@@ -43,7 +43,7 @@ class JalaliTest {
     }
 
     @Test fun date_and_time_follow_the_spec_format() {
-        // 08:30 UTC = 12:00 Tehran
+        // 10:00 UTC = 13:30 Tehran (UTC+3:30)
         assertEquals("۱۰ شهریور ۱۴۰۵، ۱۳:۳۰", "2026-09-01T10:00:00.000Z".jalaliDateTimeFa())
         // crossing midnight in Tehran moves both the date and the clock
         assertEquals("۱۱ شهریور ۱۴۰۵، ۰۱:۳۰", "2026-09-01T22:00:00.000Z".jalaliDateTimeFa())
