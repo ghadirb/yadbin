@@ -86,6 +86,8 @@ import kotlinx.serialization.json.JsonElement
     val gradeMaxLabel: String? = null,
     val ageMin: Int? = null,
     val ageMax: Int? = null,
+    /** Suggested duration in minutes (spec §15); null when the teacher did not set one. */
+    val suggestedMinutes: Int? = null,
 )
 @Serializable data class ClassDetail(
     @SerialName("class") val cls: ClassSummary,

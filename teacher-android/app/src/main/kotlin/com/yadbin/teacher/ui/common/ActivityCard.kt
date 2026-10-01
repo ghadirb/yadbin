@@ -93,6 +93,7 @@ fun ActivityCard(a: ActivityRow, onClick: () -> Unit, modifier: Modifier = Modif
             if (chips.isNotEmpty()) InfoChips(chips)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("${a.questionCount.fa()} سؤال", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                a.suggestedMinutes?.let { Text("${it.fa()} دقیقه", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Text("${a.assigned.fa()} دانش‌آموز", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 a.createdAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let {
                     Text("ساخته‌شده: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
