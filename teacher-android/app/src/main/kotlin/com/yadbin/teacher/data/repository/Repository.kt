@@ -61,7 +61,7 @@ class Repository(
     suspend fun updateClass(id: String, name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassSummary =
         api.updateClass(id, name, grade, school, gradeCode, ageMin, ageMax).cls
     suspend fun deleteClass(id: String) = api.deleteClass(id)
-    suspend fun addStudents(classId: String, text: String): AddStudentsResponse = api.addStudents(classId, text)
+    suspend fun addStudents(classId: String, text: String, gender: String? = null): AddStudentsResponse = api.addStudents(classId, text, gender)
     suspend fun removeFromClass(classId: String, studentId: String) = api.removeFromClass(classId, studentId)
     suspend fun clearStudentData(studentId: String) = api.clearStudentData(studentId)
     suspend fun deleteStudentData(studentId: String) = api.deleteStudentData(studentId)

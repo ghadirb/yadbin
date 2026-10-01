@@ -58,6 +58,8 @@ export const bulkStudentsSchema = z.object({
   name: z.string().optional(),
   names: z.array(z.string()).optional(),
   text: z.string().max(20000).optional(),
+  /** Optional: applied to every student added in this request (drives the default girl/boy avatar). */
+  gender: z.enum(['female', 'male']).nullable().optional(),
 });
 const gradeRangeCheck = (v: { gradeMin?: string | null; gradeMax?: string | null }, ctx: z.RefinementCtx) => {
   const a = gradeByCode(v.gradeMin), b = gradeByCode(v.gradeMax);

@@ -115,7 +115,9 @@ function splitNames(b: { name?: string; names?: string[]; text?: string }): stri
 /** Single add ({name}) or quick add (one name per line in {text} / {names[]}). */
 export async function addStudentsToClass(req: Request, env: Env, teacherId: string, classId: string) {
   if ((await getOwnedClass(env.DB, teacherId, classId)).archived_at) return json({ error: 'class_archived', message: 'این کلاس آرشیو شده است.' }, 409);
-  const names = splitNames(parse(bulkStudentsSchema, await readJson(req)));
+  const body = parse(bulkStudentsSchema, await readJson(req));
+  const names = splitNames(body);
+  const gender = body.gender ?? null;
   if (!names.length) return json({ error: 'validation_error', message: 'نامی وارد نشده است.' }, 400);
   if (names.length > 100) return json({ error: 'validation_error', message: 'در هر بار حداکثر ۱۰۰ نام مجاز است.' }, 400);
   const cls = await getOwnedClass(env.DB, teacherId, classId);
@@ -125,7 +127,7 @@ export async function addStudentsToClass(req: Request, env: Env, teacherId: stri
   const created = valid.map((n) => ({ id: newId(), name: n }));
   if (created.length) {
     await env.DB.batch(created.flatMap((s) => [
-      env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at,grade_code,grade_order) VALUES (?,?,?,?,?,?,?)').bind(s.id, teacherId, s.name, grade, now, cls.grade_code ?? null, cls.grade_order ?? null),
+      env.DB.prepare('INSERT INTO students (id,teacher_id,display_name,grade,created_at,grade_code,grade_order,gender) VALUES (?,?,?,?,?,?,?,?)').bind(s.id, teacherId, s.name, grade, now, cls.grade_code ?? null, cls.grade_order ?? null, gender),
       env.DB.prepare('INSERT INTO class_students (class_id,student_id,added_at) VALUES (?,?,?)').bind(classId, s.id, now),
     ]));
   }

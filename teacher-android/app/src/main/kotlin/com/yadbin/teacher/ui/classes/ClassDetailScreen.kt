@@ -86,10 +86,10 @@ class ClassDetailViewModel(private val repo: Repository, val classId: String, pr
     }
 
     /** Quick-add: one name per line. */
-    fun addStudents(text: String) {
+    fun addStudents(text: String, gender: String? = null) {
         val names = Validators.parseNames(text)
         if (names.isEmpty()) { _message.value = "نامی وارد نشده است."; return }
-        act(null, { val r = repo.addStudents(classId, names.joinToString("\n")); _message.value = "${r.added.size.fa()} دانش‌آموز اضافه شد." + if (r.skipped > 0) " (${r.skipped.fa()} نام نامعتبر رد شد)" else "" })
+        act(null, { val r = repo.addStudents(classId, names.joinToString("\n"), gender); _message.value = "${r.added.size.fa()} دانش‌آموز اضافه شد." + if (r.skipped > 0) " (${r.skipped.fa()} نام نامعتبر رد شد)" else "" })
     }
 
     fun removeFromClass(studentId: String) = act("دانش‌آموز از کلاس حذف شد (اطلاعات او حفظ شد).", { repo.removeFromClass(classId, studentId) })
@@ -201,7 +201,7 @@ fun ClassDetailScreen(
         })
     }
     avatarFor?.let { st -> AvatarEditorDialog(st.id, st.name, st.gender) { avatarFor = null } }
-    if (showAdd) AddStudentsDialog(onDismiss = { showAdd = false }, onSubmit = { text -> showAdd = false; vm.addStudents(text) })
+    if (showAdd) AddStudentsDialog(onDismiss = { showAdd = false }, onSubmit = { text, gender -> showAdd = false; vm.addStudents(text, gender) })
 
     pending?.let { (action, who) ->
         val (id, name) = who
@@ -383,10 +383,11 @@ private fun StatLine(label: String, value: String) {
 }
 
 @Composable
-private fun AddStudentsDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+private fun AddStudentsDialog(onDismiss: () -> Unit, onSubmit: (String, String?) -> Unit) {
     var mode by rememberSaveable { mutableStateOf(0) }
     var single by rememberSaveable { mutableStateOf("") }
     var bulk by rememberSaveable { mutableStateOf("") }
+    var gender by rememberSaveable { mutableStateOf<String?>(null) }
     val count = if (mode == 1) Validators.parseNames(bulk).size else 0
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -404,12 +405,18 @@ private fun AddStudentsDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit)
                     OutlinedTextField(bulk, { bulk = it }, label = { Text("هر خط یک دانش‌آموز") }, minLines = 5, modifier = Modifier.fillMaxWidth())
                     if (count > 0) Text("${count.fa()} نام", style = MaterialTheme.typography.bodySmall)
                 }
+                Spacer(Modifier.height(8.dp))
+                Text(if (mode == 0) "جنسیت (اختیاری)" else "جنسیت همه (اختیاری)", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(gender == "female", { gender = if (gender == "female") null else "female" }, label = { Text("دختر") })
+                    FilterChip(gender == "male", { gender = if (gender == "male") null else "male" }, label = { Text("پسر") })
+                }
             }
         },
         confirmButton = {
             TextButton(
                 enabled = if (mode == 0) single.trim().length >= 2 else count > 0,
-                onClick = { onSubmit(if (mode == 0) single else bulk) },
+                onClick = { onSubmit(if (mode == 0) single else bulk, gender) },
             ) { Text(if (mode == 0) "افزودن" else "افزودن همه") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },

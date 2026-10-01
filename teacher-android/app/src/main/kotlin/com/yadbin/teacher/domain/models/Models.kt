@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonElement
     /** v1.2 structured fields; null = not sent (server keeps the old value). */
     val gradeCode: String? = null, val ageMin: Int? = null, val ageMax: Int? = null,
 )
-@Serializable data class AddStudentsRequest(val text: String)
+@Serializable data class AddStudentsRequest(val text: String, val gender: String? = null)
 @Serializable data class ActivityRequest(
     val classId: String,
     val gameType: String,

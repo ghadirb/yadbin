@@ -90,6 +90,22 @@ describe('v1.2 step 1 — age & grade API', () => {
     expect(list[0]).toMatchObject({ gradeCode: 'g5' });
   });
 
+  it('quick-add can set gender for every added student (default girl/boy avatar); invalid gender is rejected', async () => {
+    const { token } = await registerTeacher(t);
+    const c = (await t.api('POST', '/api/classes', { name: 'سوم', gradeCode: 'g3' }, token)).data.class;
+    const girls = await t.api('POST', `/api/classes/${c.id}/students`, { text: 'سارا محمدی\nنرگس احمدی', gender: 'female' }, token);
+    expect(girls.status).toBe(201);
+    expect(girls.data.added).toHaveLength(2);
+    const plain = await t.api('POST', `/api/classes/${c.id}/students`, { name: 'رضا کریمی' }, token);
+    expect(plain.status).toBe(201);
+    const list = (await t.api('GET', `/api/classes/${c.id}`, undefined, token)).data.students;
+    const by = (n: string) => list.find((s: any) => s.name === n);
+    expect(by('سارا محمدی').gender).toBe('female');
+    expect(by('نرگس احمدی').gender).toBe('female');
+    expect(by('رضا کریمی').gender).toBeNull();
+    expect((await t.api('POST', `/api/classes/${c.id}/students`, { name: 'علی رضایی', gender: 'other' }, token)).status).toBe(400);
+  });
+
   it('activity carries age/grade/level/skills; fit is advisory and never blocks', async () => {
     const { token } = await registerTeacher(t);
     const c = (await t.api('POST', '/api/classes', { name: 'ترکیبی', gradeCode: 'g1' }, token)).data.class;

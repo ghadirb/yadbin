@@ -43,8 +43,8 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun deleteClass(id: String) { c.request("DELETE", "/api/classes/$id", OkResponse.serializer()) }
 
-    suspend fun addStudents(classId: String, text: String): AddStudentsResponse =
-        c.request("POST", "/api/classes/$classId/students", AddStudentsResponse.serializer(), j.encodeToString(AddStudentsRequest.serializer(), AddStudentsRequest(text)))
+    suspend fun addStudents(classId: String, text: String, gender: String? = null): AddStudentsResponse =
+        c.request("POST", "/api/classes/$classId/students", AddStudentsResponse.serializer(), j.encodeToString(AddStudentsRequest.serializer(), AddStudentsRequest(text, gender)))
 
     /** Leaves the class; the student's data is kept. */
     suspend fun removeFromClass(classId: String, studentId: String) {
