@@ -37,12 +37,17 @@ export function createDomUi(root: HTMLElement): GameUi {
       await waitForClick(ready);
     },
     playQuestion: (game, q, info) => play(root, game, q, info),
-    end(kind) {
+    end(kind, accuracy) {
       clear(root);
       const msg = kind === 'sent' ? ['آفرین! 🎉', 'فعالیت تمام شد. می‌توانی این صفحه را ببندی.']
         : kind === 'saved' ? ['آفرین! 🎉', 'نتیجه روی دستگاه ذخیره شد و بعداً ارسال می‌شود.']
         : ['این فعالیت قبلاً انجام شده است.', ''];
-      root.append(h('section', { class: 'card center', role: 'status' }, h('h1', {}, msg[0]), msg[1] ? h('p', {}, msg[1]) : null));
+      // Spec 4.2: short encouraging feedback. Wording only, never a score or a comparison.
+      const fb = kind === 'already' || accuracy === undefined ? [] : [
+        accuracy === null || accuracy >= 0.5 ? (accuracy !== null && accuracy >= 0.8 ? 'عملکرد خیلی خوب بود.' : 'عملکرد خوب بود.') : 'تمرین بیشتر کمک می‌کند؛ تلاشت عالی بود.',
+        'می‌توانی مرحله بعد را امتحان کنی.',
+      ];
+      root.append(h('section', { class: 'card center', role: 'status' }, h('h1', {}, msg[0]), msg[1] ? h('p', {}, msg[1]) : null, ...fb.map((l) => h('p', { class: 'feedback' }, l))));
     },
     error(kind, message, retry) {
       clear(root);

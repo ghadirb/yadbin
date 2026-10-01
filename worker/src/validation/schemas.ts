@@ -46,7 +46,23 @@ export const activitySchema = z.object({
   questionCount: z.number().int().min(5, 'حداقل ۵ سؤال').max(12, 'حداکثر ۱۲ سؤال').default(10),
   studentIds: z.union([z.literal('all'), z.array(z.string().uuid()).min(1, 'حداقل یک دانش‌آموز انتخاب کنید.')]).default('all'),
   expiresInDays: z.number().int().min(1).max(90).optional(),
+  title: z.string().trim().max(80, 'عنوان خیلی بلند است.').optional().nullable().transform((v) => v || null),
+  description: z.string().trim().max(500, 'توضیحات خیلی بلند است.').optional().nullable().transform((v) => v || null),
+  suggestedMinutes: z.number().int().min(1, 'زمان معتبر نیست.').max(120, 'زمان معتبر نیست.').optional().nullable().transform((v) => v ?? null),
 });
+export const activityUpdateSchema = z.object({
+  title: z.string().trim().max(80, 'عنوان خیلی بلند است.').nullable().optional(),
+  description: z.string().trim().max(500, 'توضیحات خیلی بلند است.').nullable().optional(),
+  suggestedMinutes: z.number().int().min(1, 'زمان معتبر نیست.').max(120, 'زمان معتبر نیست.').nullable().optional(),
+  difficultyMode: z.enum(['adaptive', 'easy', 'medium', 'hard']).optional(),
+  questionCount: z.number().int().min(5, 'حداقل ۵ سؤال').max(12, 'حداکثر ۱۲ سؤال').optional(),
+  expiresInDays: z.number().int().min(1).max(90).optional(),
+});
+export const duplicateSchema = z.object({
+  title: z.string().trim().max(80).optional().nullable(),
+  studentIds: z.union([z.literal('all'), z.array(z.string().uuid()).min(1)]).default('all'),
+});
+export const regenerateSchema = z.object({ studentId: z.string().uuid().optional() });
 
 const num = (max = 10 * 60 * 1000) => z.number().finite().min(0).max(max);
 const int = (max: number, min = 0) => z.number().int().min(min).max(max);

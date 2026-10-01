@@ -23,3 +23,26 @@
 
 کدهای play: `404 invalid_token`، `410 canceled`، `410 expired`، `200 {status:'completed'}`.
 نکته: نتیجه‌ی ارسالی برای جلسه‌ای که قبل از انقضا شروع شده حتی پس از انقضا پذیرفته می‌شود (بازی آفلاین نباید داده را از دست بدهد).
+
+
+## v1.1 (افزوده‌شده، سازگار با نسخه‌ی قبل)
+
+همه‌ی مسیرها با پیشوند `/api/v1/` هم کار می‌کنند (`/api/v1/classes` ≡ `/api/classes`). کلاینت‌های قدیمی بدون تغییر ادامه می‌دهند.
+
+| متد و مسیر | توضیح |
+|---|---|
+| GET `/api/classes?archived=false\|true\|all` | پیش‌فرض فقط کلاس‌های فعال؛ هر کلاس `archived` دارد |
+| POST `/api/classes/:id/archive` · `/unarchive` | آرشیو/بازگردانی. داده‌ها حفظ می‌شود؛ در کلاس آرشیوشده فعالیت یا دانش‌آموز جدید `409 class_archived` |
+| GET `/api/classes/:id` | هر دانش‌آموز: `completedActivities`, `openActivities`, `lastActivityAt`, `averagePerformance` (تا ۸ نمونه `null`), `activityState` |
+| GET `/api/students/:id/history` | تاریخچه‌ی فعالیت‌های یک دانش‌آموز (جدید به قدیم) |
+| GET `/api/students/:id` | گزارش + `summary` (تعداد، موفقیت‌ها ≥ ۰٫۷، عملکرد، دقیقه‌ی صرف‌شده) |
+| GET `/api/activities?classId=&lifecycle=open\|active\|ended\|archived\|all` | لیست فعالیت‌ها |
+| PUT `/api/activities/:id` | ویرایش `title, description, suggestedMinutes, expiresInDays` همیشه؛ `difficultyMode, questionCount` فقط پیش از شروع اولین دانش‌آموز (وگرنه `409 activity_in_progress`) |
+| POST `/api/activities/:id/duplicate` | «ساخت نسخه جدید»: عنوان «… - تمرین دوم/سوم»، لینک‌های تازه، نتایج قبلی دست‌نخورده |
+| POST `/api/activities/:id/archive` · `/unarchive` | آرشیو فعالیت |
+| POST `/api/activities/:id/regenerate-links` | `{studentId?}` لینک جدید برای کسانی که تمام نکرده‌اند؛ لینک قبلی بلافاصله باطل، جلسه‌ی شروع‌شده حفظ |
+| GET `/api/reports/class/:id` | `activeStudents` (۳۰ روز اخیر)، `averagePerformance`، `byGame[]`، `weekly[]` (۶ هفته برای نمودار). بدون مقایسه‌ی دانش‌آموزان با هم |
+| GET `/api/play/:token/progress` | پیشرفت شخصی خود دانش‌آموز؛ بدون نام/شناسه/امتیاز |
+| POST `/api/play/:token/complete` | پاسخ حالا `feedback: {level, lines[]}` دارد (جمله‌ی تشویقی، بدون عدد) |
+
+**وضعیت فعالیت** (`lifecycle`): `active` فعال · `ended` پایان‌یافته (لغو، منقضی، یا همه تمام کرده‌اند) · `archived` آرشیوشده. فیلد قدیمی `status` (`active|canceled`) تغییری نکرده است.

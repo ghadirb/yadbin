@@ -1,18 +1,21 @@
 import type { Env } from '../env';
-import { classDto, getOwnedClass, getOwnedStudent } from '../db/queries';
+import { activityDto, classDto, getOwnedClass, getOwnedStudent } from '../db/queries';
 import { recomputeStudentMetrics } from '../services/metrics';
-import { GAME_TYPES } from '../scoring';
+import { GAME_TYPES, MIN_SAMPLES } from '../scoring';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { bulkStudentsSchema, classSchema, parse } from '../validation/schemas';
 
-export async function listClasses(env: Env, teacherId: string) {
+/** GET /classes?archived=false|true|all — default false (active classes only). */
+export async function listClasses(env: Env, teacherId: string, req?: Request) {
+  const want = req ? new URL(req.url).searchParams.get('archived') ?? 'false' : 'false';
+  const filter = want === 'all' ? '' : want === 'true' ? 'AND c.archived_at IS NOT NULL' : 'AND c.archived_at IS NULL';
   const since = new Date(Date.now() - 30 * 86400_000).toISOString();
   const { results } = await env.DB.prepare(
     `SELECT c.*,
        (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id = c.id AND cs.removed_at IS NULL) AS student_count,
        (SELECT COUNT(*) FROM activities a WHERE a.class_id = c.id AND a.created_at >= ?) AS recent_activity_count
-     FROM classes c WHERE c.teacher_id = ? ORDER BY c.created_at DESC`,
+     FROM classes c WHERE c.teacher_id = ? ${filter} ORDER BY c.created_at DESC`,
   ).bind(since, teacherId).all<any>();
   return json({ classes: results.map((c) => ({ ...classDto(c), studentCount: c.student_count, recentActivityCount: c.recent_activity_count })) });
 }
@@ -30,10 +33,17 @@ export async function getClass(env: Env, teacherId: string, id: string) {
   const students = await env.DB.prepare(
     `SELECT s.id, s.display_name,
        (SELECT COUNT(*) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS completed,
-       (SELECT MAX(a.completed_at) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS last_at
+       (SELECT COUNT(*) FROM activity_students a JOIN activities ac ON ac.id = a.activity_id
+         WHERE a.student_id = s.id AND ac.class_id = cs.class_id AND a.status != 'completed' AND ac.status = 'active' AND ac.archived_at IS NULL
+           AND (ac.expires_at IS NULL OR ac.expires_at >= ?)) AS open_count,
+       (SELECT MAX(a.completed_at) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS last_at,
+       (SELECT SUM(CASE WHEN r.accuracy IS NOT NULL THEN r.accuracy * r.sample_count END) FROM game_results r
+          JOIN game_sessions gs ON gs.id = r.session_id JOIN activity_students a ON a.id = gs.activity_student_id WHERE a.student_id = s.id) AS wsum,
+       (SELECT SUM(CASE WHEN r.accuracy IS NOT NULL THEN r.sample_count END) FROM game_results r
+          JOIN game_sessions gs ON gs.id = r.session_id JOIN activity_students a ON a.id = gs.activity_student_id WHERE a.student_id = s.id) AS wn
      FROM class_students cs JOIN students s ON s.id = cs.student_id
      WHERE cs.class_id = ? AND cs.removed_at IS NULL ORDER BY cs.added_at, s.display_name`,
-  ).bind(id).all<any>();
+  ).bind(nowIso(), id).all<any>();
   const acts = await env.DB.prepare(
     `SELECT a.*, (SELECT COUNT(*) FROM activity_students x WHERE x.activity_id = a.id) AS assigned,
        (SELECT COUNT(*) FROM activity_students x WHERE x.activity_id = a.id AND x.status = 'completed') AS completed
@@ -41,12 +51,26 @@ export async function getClass(env: Env, teacherId: string, id: string) {
   ).bind(id).all<any>();
   return json({
     class: classDto(c),
-    students: students.results.map((s) => ({ id: s.id, name: s.display_name, completedActivities: s.completed, lastActivityAt: s.last_at })),
-    activities: acts.results.map((a) => ({
-      id: a.id, gameType: a.game_type, difficultyMode: a.difficulty_mode, questionCount: a.question_count,
-      status: a.status, createdAt: a.created_at, expiresAt: a.expires_at, assigned: a.assigned, completed: a.completed,
-    })),
+    students: students.results.map((s) => {
+      const enough = (s.wn ?? 0) >= MIN_SAMPLES;
+      return {
+        id: s.id, name: s.display_name, completedActivities: s.completed, openActivities: s.open_count, lastActivityAt: s.last_at,
+        // Same rule as the student report: no numeric average until there is enough data.
+        averagePerformance: enough ? Math.round((s.wsum / s.wn) * 100) / 100 : null,
+        sufficientData: enough,
+        activityState: s.open_count > 0 ? 'open' : s.completed > 0 ? 'up_to_date' : 'no_activity',
+        activityStateLabel: s.open_count > 0 ? 'فعالیت باز دارد' : s.completed > 0 ? 'فعالیت‌ها انجام شده' : 'هنوز فعالیتی ندارد',
+      };
+    }),
+    activities: acts.results.map((a) => activityDto(a, a.assigned, a.completed)),
   });
+}
+
+/** Archive keeps every student, activity and result; the class only disappears from the active list and accepts no new activities. */
+export async function setClassArchived(env: Env, teacherId: string, id: string, archived: boolean) {
+  await getOwnedClass(env.DB, teacherId, id);
+  await env.DB.prepare('UPDATE classes SET archived_at = ? WHERE id = ? AND teacher_id = ?').bind(archived ? nowIso() : null, id, teacherId).run();
+  return json({ class: classDto(await getOwnedClass(env.DB, teacherId, id)) });
 }
 
 export async function updateClass(req: Request, env: Env, teacherId: string, id: string) {
@@ -82,7 +106,7 @@ function splitNames(b: { name?: string; names?: string[]; text?: string }): stri
 
 /** Single add ({name}) or quick add (one name per line in {text} / {names[]}). */
 export async function addStudentsToClass(req: Request, env: Env, teacherId: string, classId: string) {
-  await getOwnedClass(env.DB, teacherId, classId);
+  if ((await getOwnedClass(env.DB, teacherId, classId)).archived_at) return json({ error: 'class_archived', message: 'این کلاس آرشیو شده است.' }, 409);
   const names = splitNames(parse(bulkStudentsSchema, await readJson(req)));
   if (!names.length) return json({ error: 'validation_error', message: 'نامی وارد نشده است.' }, 400);
   if (names.length > 100) return json({ error: 'validation_error', message: 'در هر بار حداکثر ۱۰۰ نام مجاز است.' }, 400);

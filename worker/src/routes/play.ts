@@ -8,6 +8,13 @@ import { newId, nowIso, TOKEN_RE } from '../utils/ids';
 import { rateLimit, rateLimitIp } from '../utils/ratelimit';
 import { attentionEventSchema, completeSchema, memoryEventSchema, parse, problemEventSchema } from '../validation/schemas';
 
+/** Encouraging, non-numeric feedback for the child (spec 4.2). Never a score, never a comparison. */
+export function childFeedback(accuracy: number | null) {
+  const level = accuracy === null ? 'good' : accuracy >= 0.8 ? 'great' : accuracy >= 0.5 ? 'good' : 'keep_going';
+  const performance = level === 'great' ? 'عملکرد خیلی خوب بود.' : level === 'good' ? 'عملکرد خوب بود.' : 'تمرین بیشتر کمک می‌کند؛ تلاشت عالی بود.';
+  return { level, lines: ['فعالیت کامل شد.', performance, 'می‌توانی مرحله بعد را امتحان کنی.'] };
+}
+
 const INVALID = () => new HttpError(404, 'invalid_token', 'این لینک معتبر نیست.');
 const INACTIVE = () => new HttpError(410, 'canceled', 'این فعالیت دیگر فعال نیست.');
 const EXPIRED = () => new HttpError(410, 'expired', 'این فعالیت دیگر فعال نیست.\nاز معلم درخواست فعالیت جدید کنید.');
@@ -136,5 +143,26 @@ export async function completePlay(req: Request, env: Env, token: string) {
   if ((ins.meta?.changes ?? 0) === 0) return json(doneMsg); // lost a race with an identical submission: keep the stored result
 
   await recomputeStudentMetrics(env.DB, row.student_id, row.game_type);
-  return json({ ok: true, duplicate: false, message: 'آفرین! فعالیت تمام شد.' }); // no numeric score for the child
+  return json({ ok: true, duplicate: false, message: 'آفرین! فعالیت تمام شد.', feedback: childFeedback(metrics.accuracy) }); // no numeric score for the child
+}
+
+/** The child's own progress, reachable only with their own link. Returns no name, no ids, no other student's data, no scores. */
+export async function getProgress(env: Env, token: string, req?: Request) {
+  if (req) await rateLimitIp(env, req, 'play', 600, 60);
+  const row = await loadByToken(env, token);
+  await rateLimit(env, `progress:token:${token}`, 120, 3600);
+  const { results } = await env.DB.prepare(
+    `SELECT a.game_type AS game, COUNT(*) AS n, MAX(ast.completed_at) AS last_at,
+            SUM(CASE WHEN r.accuracy >= 0.7 THEN 1 ELSE 0 END) AS good
+       FROM activity_students ast JOIN activities a ON a.id = ast.activity_id
+       LEFT JOIN game_sessions gs ON gs.activity_student_id = ast.id LEFT JOIN game_results r ON r.session_id = gs.id
+      WHERE ast.student_id = ? AND ast.status = 'completed' GROUP BY a.game_type`,
+  ).bind(row.student_id).all<{ game: string; n: number; last_at: string | null; good: number | null }>();
+  const names: Record<string, string> = { memory: 'به خاطر بسپار', attention: 'پیداش کن', problem_solving: 'راهش را پیدا کن' };
+  const total = results.reduce((t, r) => t + r.n, 0);
+  return json({
+    completedActivities: total,
+    games: results.map((r) => ({ game: r.game, gameName: names[r.game], completed: r.n, goodRuns: r.good ?? 0, lastAt: r.last_at })),
+    message: total === 0 ? 'هنوز فعالیتی تمام نکرده‌ای. شروع کن!' : `تا حالا ${total} فعالیت را تمام کرده‌ای. ادامه بده!`,
+  });
 }
