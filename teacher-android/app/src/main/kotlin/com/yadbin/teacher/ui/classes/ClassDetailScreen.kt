@@ -298,19 +298,12 @@ private fun ActivitiesTab(data: ClassDetail, onNew: () -> Unit, onOpen: (String)
         Button(onClick = onNew, Modifier.padding(16.dp).fillMaxWidth(), enabled = data.students.isNotEmpty()) { Text("فعالیت جدید") }
         if (data.students.isEmpty()) Text("برای ساخت فعالیت ابتدا دانش‌آموز اضافه کنید.", Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
         if (data.activities.isEmpty()) {
-            EmptyState("هنوز فعالیتی ساخته نشده است.")
+            if (data.students.isEmpty()) EmptyState("هنوز فعالیتی ساخته نشده است.")
+            else EmptyState("هنوز فعالیتی ساخته نشده است.", "ساخت فعالیت", onNew)
         } else {
-            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(data.activities, key = { it.id }) { a ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpen(a.id) }) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleSmall)
-                            Text("${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
-                            val chips = listOfNotNull(a.levelLabel, Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels
-                            if (chips.isNotEmpty()) { Spacer(Modifier.height(4.dp)); InfoChips(chips) }
-                            Text("انجام‌شده: ${a.completed.fa()} از ${a.assigned.fa()}" + a.createdAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { " • ساخته‌شده: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
+                    ActivityCard(a, onClick = { onOpen(a.id) })
                 }
             }
         }
