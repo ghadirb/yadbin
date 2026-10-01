@@ -2,6 +2,8 @@
 
 package com.yadbin.teacher.ui.classes
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -176,10 +178,13 @@ fun ClassDetailScreen(
                         Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها", fontWeight = if (tab == 1) FontWeight.Bold else FontWeight.Normal) })
                         Tab(tab == 2, { tab = 2 }, text = { Text("گزارش", fontWeight = if (tab == 2) FontWeight.Bold else FontWeight.Normal) })
                     }
-                    when (tab) {
-                        0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }, { avatarFor = it }) { action, id, name -> pending = action to (id to name) }
-                        1 -> ActivitiesTab(d.data, onNewActivity, onOpenActivity)
-                        else -> ReportTab(report)
+                    // Spec §23: one subtle, short animation when the tab changes (no continuous animation).
+                    Crossfade(targetState = tab, animationSpec = tween(180), label = "class-tab") { t ->
+                        when (t) {
+                            0 -> StudentsTab(d.data, { showAdd = true }, onOpenStudent, { editingStudent = it }, { avatarFor = it }) { action, id, name -> pending = action to (id to name) }
+                            1 -> ActivitiesTab(d.data, onNewActivity, onOpenActivity)
+                            else -> ReportTab(report)
+                        }
                     }
                 }
             }
