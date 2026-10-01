@@ -256,3 +256,17 @@ describe('v1.1 multi-user (spec §7): 1 teacher, 1 class, 30 students at once', 
     expect(ms).toBeLessThan(30_000);
   }, 120_000);
 });
+
+describe('v1.1 error handling (spec 6.2)', () => {
+  it('returns Persian JSON errors with a stable shape for bad input, and never leaks internals', async () => {
+    const { token } = await registerTeacher(t);
+    const bad = await t.api('POST', '/api/classes', { name: '', grade: '' }, token);
+    expect(bad.status).toBe(400);
+    expect(bad.data).toMatchObject({ error: 'validation_error' });
+    expect(typeof bad.data.message).toBe('string');
+    const res = await t.raw('POST', '/api/classes', { Authorization: `Bearer ${token}` }, undefined);
+    expect([400]).toContain(res.status);
+    const nf = await t.api('GET', '/api/activities/00000000-0000-4000-8000-000000000000', undefined, token);
+    expect(nf.status).toBe(404); expect(JSON.stringify(nf.data)).not.toMatch(/SELECT|stack|D1_/);
+  });
+});

@@ -88,8 +88,11 @@ export default {
         const body = e.status === 429 ? undefined : e.extra;
         return withCors(json({ error: e.code, message: e.message, details: body }, e.status, retry ? { 'Retry-After': String(retry) } : {}), cors);
       }
-      console.error('unhandled', e instanceof Error ? e.stack : e);
-      return withCors(json({ error: 'internal_error', message: 'خطای داخلی سرور.' }, 500), cors);
+      // Developer-facing error log (spec 6.2): structured, one line, no body/PII. The id is also sent to the client
+      // so a teacher can report it ("کد پیگیری") and it can be found in `wrangler tail`.
+      const errorId = crypto.randomUUID().slice(0, 8);
+      console.error(JSON.stringify({ level: 'error', errorId, method: req.method, path, message: e instanceof Error ? e.message : String(e), stack: e instanceof Error ? e.stack?.split('\n').slice(0, 6) : undefined }));
+      return withCors(json({ error: 'internal_error', message: 'خطای داخلی سرور.', errorId }, 500), cors);
     }
   },
 } satisfies ExportedHandler<Env>;

@@ -54,22 +54,27 @@ class ApiClient(
                 else -> null
             }
             builder.method(method, payload)
-            try {
-                http.newCall(builder.build()).execute().use { resp ->
-                    val text = resp.body?.string().orEmpty()
-                    if (!resp.isSuccessful) {
-                        if (resp.code == 401 && token != null) onUnauthorized()
-                        throw toApiException(resp.code, text)
+            // Spec 6.2: one quiet retry for READS only (idempotent). Writes are never auto-retried (no duplicate classes/activities).
+            val attempts = if (method == "GET") 2 else 1
+            for (attempt in 1..attempts) {
+                try {
+                    return@withContext http.newCall(builder.build()).execute().use { resp ->
+                        val text = resp.body?.string().orEmpty()
+                        if (!resp.isSuccessful) {
+                            if (resp.code == 401 && token != null) onUnauthorized()
+                            throw toApiException(resp.code, text)
+                        }
+                        try {
+                            json.decodeFromString(serializer, text)
+                        } catch (e: SerializationException) {
+                            throw ApiException("bad_response", "پاسخ نامعتبر از سرور دریافت شد.", resp.code)
+                        }
                     }
-                    try {
-                        json.decodeFromString(serializer, text)
-                    } catch (e: SerializationException) {
-                        throw ApiException("bad_response", "پاسخ نامعتبر از سرور دریافت شد.", resp.code)
-                    }
+                } catch (e: IOException) {
+                    if (attempt < attempts) kotlinx.coroutines.delay(600)
                 }
-            } catch (e: IOException) {
-                throw NetworkException()
             }
+            throw NetworkException()
         }
 
     private fun toApiException(status: Int, text: String): ApiException {
