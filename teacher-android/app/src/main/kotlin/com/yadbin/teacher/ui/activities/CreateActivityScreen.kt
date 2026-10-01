@@ -2,6 +2,7 @@
 
 package com.yadbin.teacher.ui.activities
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -93,6 +94,7 @@ fun CreateActivityScreen(classId: String, onBack: () -> Unit, onCreated: (activi
     var ageMax by rememberSaveable { mutableStateOf("") }
     var templateId by rememberSaveable { mutableStateOf<String?>(null) }
     var prefillTemplateDone by rememberSaveable { mutableStateOf(false) }
+    var step by rememberSaveable { mutableStateOf(0) }
 
     fun applyTemplate(t: Template) {
         game = t.gameType; difficulty = t.difficultyMode; count = t.questionCount.coerceIn(5, 12).toFloat()
@@ -141,94 +143,142 @@ fun CreateActivityScreen(classId: String, onBack: () -> Unit, onCreated: (activi
                 val ageBad = (ageMin.isNotBlank() && (minAge == null || minAge !in 3..25)) || (ageMax.isNotBlank() && (maxAge == null || maxAge !in 3..25)) || (minAge != null && maxAge != null && minAge > maxAge)
                 val gradeBad = gradeMin != null && gradeMax != null && (Edu.grades.firstOrNull { it.code == gradeMin }?.order ?: 0) > (Edu.grades.firstOrNull { it.code == gradeMax }?.order ?: 0)
                 val minutesBad = minutes.isNotBlank() && (minutesVal == null || minutesVal !in 1..120)
-                Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                    OutlinedButton(onClick = onAiBuilder, modifier = Modifier.fillMaxWidth()) { Text("ساخت پیشنهاد با هوش مصنوعی") }
-                    Text("هوش مصنوعی فقط پیشنهاد می‌دهد؛ شما ویرایش و تأیید می‌کنید.", style = MaterialTheme.typography.bodySmall)
-
-                    Section("۱. دانش‌آموزان")
-                    ChoiceRow("کل کلاس (${students.size.fa()} نفر)", wholeClass) { wholeClass = true }
-                    ChoiceRow("انتخاب دستی", !wholeClass) { wholeClass = false }
-                    if (!wholeClass) {
-                        students.forEach { s ->
-                            Row(Modifier.fillMaxWidth().clickable { selected = if (s.id in selected) selected - s.id else selected + s.id }, verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = s.id in selected, onCheckedChange = { selected = if (it) selected + s.id else selected - s.id })
-                                Text(s.name)
-                                val info = listOfNotNull(s.gradeLabel, s.age?.let { it.fa() + " ساله" }).joinToString(" • ")
-                                if (info.isNotBlank()) Text("  ($info)", style = MaterialTheme.typography.bodySmall)
+                val stepTitles = listOf("مشخصات", "هدف آموزشی", "مخاطب", "تنظیمات بازی", "بررسی")
+                val audienceOk = (wholeClass || selected.isNotEmpty()) && students.isNotEmpty() && !ageBad && !gradeBad
+                val stepOk = when (step) { 2 -> audienceOk; 3 -> !minutesBad; else -> true }
+                val lastStep = stepTitles.lastIndex
+                androidx.activity.compose.BackHandler(enabled = step > 0) { step -= 1 }
+                Column(Modifier.padding(pad).fillMaxSize()) {
+                    // Progress: «مرحله ۲ از ۵ — هدف آموزشی»
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("مرحله ${(step + 1).fa()} از ${stepTitles.size.fa()} — ${stepTitles[step]}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        LinearProgressIndicator(progress = { (step + 1) / stepTitles.size.toFloat() }, modifier = Modifier.fillMaxWidth())
+                    }
+                    Crossfade(step, modifier = Modifier.weight(1f).fillMaxWidth(), label = "create-step") { st ->
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            when (st) {
+                                0 -> {
+                                    OutlinedButton(onClick = onAiBuilder, modifier = Modifier.fillMaxWidth()) { Text("ساخت پیشنهاد با هوش مصنوعی") }
+                                    Text("هوش مصنوعی فقط پیشنهاد می‌دهد؛ شما ویرایش و تأیید می‌کنید.", style = MaterialTheme.typography.bodySmall)
+                                    Section("عنوان و توضیح (اختیاری)")
+                                    OutlinedTextField(title, { title = it.take(80) }, label = { Text("عنوان") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(description, { description = it.take(500) }, label = { Text("توضیحات") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                                    if (templates.isNotEmpty()) {
+                                        Section("قالب آماده (اختیاری)")
+                                        val gOrder = Edu.grades.firstOrNull { it.code == classGrade }?.order
+                                        fun inRange(t: Template): Boolean {
+                                            val lo = Edu.grades.firstOrNull { it.code == t.gradeMin }?.order ?: return true
+                                            val hi = Edu.grades.firstOrNull { it.code == t.gradeMax }?.order ?: return true
+                                            return gOrder != null && gOrder in lo..hi
+                                        }
+                                        val ordered = templates.sortedByDescending { inRange(it) }
+                                        val opts = ordered.map { CodeLabel(it.id, it.title + if (inRange(it)) " ✓" else "") }
+                                        OptionDropdown("قالب", opts, templateId, { id ->
+                                            val t = templates.firstOrNull { it.id == id }
+                                            if (t != null) applyTemplate(t) else templateId = null
+                                        }, Modifier.fillMaxWidth(), allowNone = true, noneLabel = "بدون قالب")
+                                        templates.firstOrNull { it.id == templateId }?.let { Text(it.description, style = MaterialTheme.typography.bodySmall) }
+                                        Text("علامت ✓ یعنی قالب برای پایه‌ی این کلاس مناسب است. بعد از انتخاب قالب می‌توانید همه‌چیز را تغییر دهید.", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                1 -> {
+                                    Section("مهارت‌های هدف (تا ۵ مورد، اختیاری)")
+                                    Text("فقط برای راهنمایی شماست؛ نتیجه‌ی فعالیت هیچ برچسبی روی دانش‌آموز نمی‌گذارد.", style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(8.dp))
+                                    SkillChips(skills, { k -> skills = if (k in skills) skills - k else if (skills.size < 5) skills + k else skills })
+                                    if (skills.size >= 5) Text("حداکثر ۵ مهارت قابل انتخاب است.", style = MaterialTheme.typography.bodySmall)
+                                }
+                                2 -> {
+                                    Section("دانش‌آموزان")
+                                    ChoiceRow("کل کلاس (${students.size.fa()} نفر)", wholeClass) { wholeClass = true }
+                                    ChoiceRow("انتخاب دستی", !wholeClass) { wholeClass = false }
+                                    if (!wholeClass) {
+                                        students.forEach { s ->
+                                            Row(Modifier.fillMaxWidth().clickable { selected = if (s.id in selected) selected - s.id else selected + s.id }, verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(checked = s.id in selected, onCheckedChange = { selected = if (it) selected + s.id else selected - s.id })
+                                                Text(s.name)
+                                                val info = listOfNotNull(s.gradeLabel, s.age?.let { it.fa() + " ساله" }).joinToString(" • ")
+                                                if (info.isNotBlank()) Text("  ($info)", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                        }
+                                        if (selected.isEmpty()) Text("حداقل یک دانش‌آموز انتخاب کنید.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                    }
+                                    if (students.isEmpty()) Text("این کلاس هنوز دانش‌آموزی ندارد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                    Section("محدوده‌ی پیشنهادی پایه و سن (اختیاری)")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        GradeDropdown("از پایه", gradeMin, { gradeMin = it }, Modifier.weight(1f), allowNone = true, noneLabel = "—")
+                                        GradeDropdown("تا پایه", gradeMax, { gradeMax = it }, Modifier.weight(1f), allowNone = true, noneLabel = "—")
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        AgeField("از سن", ageMin, { ageMin = it }, Modifier.weight(1f))
+                                        AgeField("تا سن", ageMax, { ageMax = it }, Modifier.weight(1f))
+                                    }
+                                    if (gradeBad) Text("پایه‌ی شروع نباید بالاتر از پایه‌ی پایان باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                    if (ageBad) Text("بازه‌ی سنی معتبر نیست (۳ تا ۲۵ سال).", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                    Text("این محدوده فقط برای راهنمایی است؛ شما می‌توانید فعالیت را برای هر دانش‌آموزی انتخاب کنید.", style = MaterialTheme.typography.bodySmall)
+                                }
+                                3 -> {
+                                    Section("بازی")
+                                    listOf("memory", "attention", "problem_solving").forEach { g -> ChoiceRow(Labels.game(g), game == g) { game = g } }
+                                    Section("سطح دشواری بازی")
+                                    listOf("adaptive", "easy", "medium", "hard").forEach { m -> ChoiceRow(Labels.difficulty(m), difficulty == m) { difficulty = m } }
+                                    Section("تعداد سؤال: ${count.toInt().fa()}")
+                                    Slider(value = count, onValueChange = { count = it }, valueRange = 5f..12f, steps = 6)
+                                    Section("سطح فعالیت و زمان پیشنهادی (اختیاری)")
+                                    OptionDropdown("سطح فعالیت", Edu.levels, level, { level = it }, Modifier.fillMaxWidth(), allowNone = true, noneLabel = "تعیین نشده")
+                                    Spacer(Modifier.height(8.dp))
+                                    AgeField("زمان پیشنهادی (دقیقه)", minutes, { minutes = it }, Modifier.fillMaxWidth())
+                                    if (minutesBad) Text("زمان باید بین ۱ تا ۱۲۰ دقیقه باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                                else -> {
+                                    Section("پیش‌نمایش فعالیت")
+                                    Card(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+                                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(title.trim().ifBlank { Labels.game(game) }, style = MaterialTheme.typography.titleMedium)
+                                            if (description.isNotBlank()) Text(description.trim(), style = MaterialTheme.typography.bodyMedium)
+                                            HorizontalDivider()
+                                            ReviewRow("بازی", Labels.game(game))
+                                            ReviewRow("دشواری", Labels.difficulty(difficulty))
+                                            Edu.levelLabel(level)?.let { ReviewRow("سطح فعالیت", it) }
+                                            ReviewRow("تعداد سؤال", count.toInt().fa())
+                                            minutesVal?.let { ReviewRow("زمان پیشنهادی", "${it.fa()} دقیقه") }
+                                            if (skills.isNotEmpty()) ReviewRow("مهارت‌ها", skills.joinToString("، ") { Edu.skillLabel(it) })
+                                            Edu.gradeRange(Edu.gradeLabel(gradeMin), Edu.gradeLabel(gradeMax))?.let { ReviewRow("پایه", it) }
+                                            Edu.ageRange(minAge, maxAge)?.let { ReviewRow("سن", it) }
+                                            ReviewRow("دانش‌آموزان", if (wholeClass) "کل کلاس (${students.size.fa()} نفر)" else "${selected.size.fa()} نفر انتخاب‌شده")
+                                        }
+                                    }
+                                    Text("با ساخت فعالیت، برای هر دانش‌آموز یک لینک اختصاصی ساخته می‌شود.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                                    error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+                                }
                             }
                         }
                     }
-
-                    if (templates.isNotEmpty()) {
-                        Section("۲. قالب آماده (اختیاری)")
-                        val gOrder = Edu.grades.firstOrNull { it.code == classGrade }?.order
-                        fun inRange(t: Template): Boolean {
-                            val lo = Edu.grades.firstOrNull { it.code == t.gradeMin }?.order ?: return true
-                            val hi = Edu.grades.firstOrNull { it.code == t.gradeMax }?.order ?: return true
-                            return gOrder != null && gOrder in lo..hi
+                    // Bottom bar: previous / next (last step: create)
+                    Surface(tonalElevation = 3.dp) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (step > 0) OutlinedButton(onClick = { step -= 1 }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("قبلی") }
+                            if (step < lastStep) {
+                                Button(onClick = { step += 1 }, enabled = stepOk, modifier = Modifier.weight(2f)) { Text("بعدی") }
+                            } else {
+                                val canSubmit = students.isNotEmpty() && (wholeClass || selected.isNotEmpty()) && !busy && !ageBad && !gradeBad && !minutesBad
+                                Button(
+                                    onClick = {
+                                        val spec = ActivitySpec(
+                                            classId = classId, gameType = game, difficultyMode = difficulty, questionCount = count.toInt(),
+                                            studentIds = if (wholeClass) null else students.map { it.id }.filter { it in selected },
+                                            title = title.trim().ifBlank { null }, description = description.trim().ifBlank { null }, suggestedMinutes = minutesVal,
+                                            level = level, skills = skills.toList(), gradeMin = gradeMin, gradeMax = gradeMax, ageMin = minAge, ageMax = maxAge, templateId = templateId,
+                                        )
+                                        vm.create(spec, onCreated)
+                                    },
+                                    enabled = canSubmit, modifier = Modifier.weight(2f),
+                                ) { if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("ساخت فعالیت") }
+                            }
                         }
-                        val ordered = templates.sortedByDescending { inRange(it) }
-                        val opts = ordered.map { CodeLabel(it.id, it.title + if (inRange(it)) " ✓" else "") }
-                        OptionDropdown("قالب", opts, templateId, { id ->
-                            val t = templates.firstOrNull { it.id == id }
-                            if (t != null) applyTemplate(t) else templateId = null
-                        }, Modifier.fillMaxWidth(), allowNone = true, noneLabel = "بدون قالب")
-                        templates.firstOrNull { it.id == templateId }?.let { Text(it.description, style = MaterialTheme.typography.bodySmall) }
-                        Text("علامت ✓ یعنی قالب برای پایه‌ی این کلاس مناسب است. بعد از انتخاب قالب می‌توانید همه‌چیز را تغییر دهید.", style = MaterialTheme.typography.bodySmall)
                     }
-
-                    Section("۳. بازی")
-                    listOf("memory", "attention", "problem_solving").forEach { g -> ChoiceRow(Labels.game(g), game == g) { game = g } }
-
-                    Section("۴. سطح دشواری بازی")
-                    listOf("adaptive", "easy", "medium", "hard").forEach { m -> ChoiceRow(Labels.difficulty(m), difficulty == m) { difficulty = m } }
-
-                    Section("۵. تعداد سؤال: ${count.toInt().fa()}")
-                    Slider(value = count, onValueChange = { count = it }, valueRange = 5f..12f, steps = 6)
-
-                    Section("۶. مشخصات فعالیت (اختیاری)")
-                    OutlinedTextField(title, { title = it.take(80) }, label = { Text("عنوان") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(description, { description = it.take(500) }, label = { Text("توضیحات") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    AgeField("زمان پیشنهادی (دقیقه)", minutes, { minutes = it }, Modifier.fillMaxWidth())
-                    if (minutesBad) Text("زمان باید بین ۱ تا ۱۲۰ دقیقه باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    OptionDropdown("سطح فعالیت", Edu.levels, level, { level = it }, Modifier.fillMaxWidth(), allowNone = true, noneLabel = "تعیین نشده")
-                    Spacer(Modifier.height(8.dp))
-                    Text("مهارت‌های هدف (تا ۵ مورد)", style = MaterialTheme.typography.labelMedium)
-                    SkillChips(skills, { skills = if (it in skills) skills - it else skills + it })
-
-                    Section("۷. محدوده‌ی پیشنهادی پایه و سن (اختیاری)")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GradeDropdown("از پایه", gradeMin, { gradeMin = it }, Modifier.weight(1f), allowNone = true, noneLabel = "—")
-                        GradeDropdown("تا پایه", gradeMax, { gradeMax = it }, Modifier.weight(1f), allowNone = true, noneLabel = "—")
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AgeField("از سن", ageMin, { ageMin = it }, Modifier.weight(1f))
-                        AgeField("تا سن", ageMax, { ageMax = it }, Modifier.weight(1f))
-                    }
-                    if (gradeBad) Text("پایه‌ی شروع نباید بالاتر از پایه‌ی پایان باشد.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    if (ageBad) Text("بازه‌ی سنی معتبر نیست (۳ تا ۲۵ سال).", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    Text("این محدوده فقط برای راهنمایی است؛ شما می‌توانید فعالیت را برای هر دانش‌آموزی انتخاب کنید.", style = MaterialTheme.typography.bodySmall)
-
-                    error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
-                    Spacer(Modifier.height(16.dp))
-                    val canSubmit = students.isNotEmpty() && (wholeClass || selected.isNotEmpty()) && !busy && !ageBad && !gradeBad && !minutesBad
-                    Button(
-                        onClick = {
-                            val spec = ActivitySpec(
-                                classId = classId, gameType = game, difficultyMode = difficulty, questionCount = count.toInt(),
-                                studentIds = if (wholeClass) null else students.map { it.id }.filter { it in selected },
-                                title = title.trim().ifBlank { null }, description = description.trim().ifBlank { null }, suggestedMinutes = minutesVal,
-                                level = level, skills = skills.toList(), gradeMin = gradeMin, gradeMax = gradeMax, ageMin = minAge, ageMax = maxAge, templateId = templateId,
-                            )
-                            vm.create(spec, onCreated)
-                        },
-                        enabled = canSubmit, modifier = Modifier.fillMaxWidth(),
-                    ) { if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("تأیید و ساخت فعالیت و لینک‌ها") }
-                    if (!wholeClass && selected.isEmpty()) Text("حداقل یک دانش‌آموز انتخاب کنید.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -246,5 +296,13 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected = selected, onClick = onClick)
         Text(label)
+    }
+}
+
+@Composable
+private fun ReviewRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.End)
     }
 }
