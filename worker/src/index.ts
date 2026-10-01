@@ -6,6 +6,8 @@ import * as students from './routes/students';
 import * as activities from './routes/activities';
 import * as play from './routes/play';
 import * as reports from './routes/reports';
+import { activityDraft } from './ai/builder';
+import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
 import { corsHeaders, HttpError, json } from './utils/http';
 
@@ -41,6 +43,8 @@ add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStu
 add('DELETE', '/api/students/:id/data', true, (_r, env, p, t) => students.clearStudentData(env, t, p.id));
 add('DELETE', '/api/students/:id', true, (_r, env, p, t) => students.deleteStudent(env, t, p.id));
 
+add('POST', '/api/ai/activity-draft', true, (req, env, _p, t) => activityDraft(req, env, t));
+add('GET', '/api/dashboard', true, (req, env, _p, t) => dashboard(req, env, t));
 add('GET', '/api/templates', true, (req) => Promise.resolve(activities.listTemplates(req)));
 add('GET', '/api/templates/:id', true, (_r, _e, p) => Promise.resolve(activities.getTemplate(p.id)));
 add('POST', '/api/activities/from-template', true, (req, env, _p, t) => activities.createFromTemplate(req, env, t));

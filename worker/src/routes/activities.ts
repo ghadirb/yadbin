@@ -117,6 +117,20 @@ async function counts(env: Env, id: string) {
   return { assigned: c?.assigned ?? 0, completed: c?.completed ?? 0, touched: c?.touched ?? 0 };
 }
 
+
+/** Shared by GET /activities and the dashboard: lifecycle + grade / skill / level / game / completion filters. */
+export function applyActivityFilters<T extends Record<string, any>>(all: T[], sp: URLSearchParams, want = 'open'): T[] {
+  const gradeF = gradeByCode(sp.get('grade'))?.order ?? null, skillF = sp.get('skill'), levelF = sp.get('level'), gameF = sp.get('gameType');
+  const completion = sp.get('completion'); // done = everyone finished, open = somebody still has to
+  return all.filter((a) => (want === 'all' ? true : want === 'open' ? a.lifecycle !== 'archived' : a.lifecycle === want))
+    .filter((a) => !gameF || a.gameType === gameF)
+    .filter((a) => !levelF || a.level === levelF)
+    .filter((a) => !skillF || a.effectiveSkills.includes(skillF))
+    // grade filter: activities whose range contains the grade, plus activities without any range (old/unrestricted ones)
+    .filter((a) => gradeF === null || !a.hasSuitabilityRange || ((a.gradeMin === null || (gradeByCode(a.gradeMin)!.order <= gradeF)) && (a.gradeMax === null || (gradeByCode(a.gradeMax)!.order >= gradeF))))
+    .filter((a) => !completion || (completion === 'done' ? a.assigned > 0 && a.completed >= a.assigned : a.completed < a.assigned));
+}
+
 /** GET /activities?classId=&lifecycle=active|ended|archived|all (default: everything not archived). */
 export async function listActivities(req: Request, env: Env, teacherId: string) {
   const url = new URL(req.url);
@@ -129,16 +143,7 @@ export async function listActivities(req: Request, env: Env, teacherId: string) 
        FROM activities a WHERE a.teacher_id = ? ${classId ? 'AND a.class_id = ?' : ''} ORDER BY a.created_at DESC LIMIT 200`,
   ).bind(...(classId ? [teacherId, classId] : [teacherId])).all<any>();
   const all = results.map((a) => activityDto(a, a.assigned_n, a.completed_n));
-  const sp = url.searchParams;
-  const gradeF = gradeByCode(sp.get('grade'))?.order ?? null, skillF = sp.get('skill'), levelF = sp.get('level'), gameF = sp.get('gameType');
-  const completion = sp.get('completion'); // done = everyone finished, open = somebody still has to
-  const activities = all.filter((a) => (want === 'all' ? true : want === 'open' ? a.lifecycle !== 'archived' : a.lifecycle === want))
-    .filter((a) => !gameF || a.gameType === gameF)
-    .filter((a) => !levelF || a.level === levelF)
-    .filter((a) => !skillF || a.effectiveSkills.includes(skillF))
-    // grade filter: activities whose range contains the grade, plus activities without any range (old/unrestricted ones)
-    .filter((a) => gradeF === null || !a.hasSuitabilityRange || ((a.gradeMin === null || (gradeByCode(a.gradeMin)!.order <= gradeF)) && (a.gradeMax === null || (gradeByCode(a.gradeMax)!.order >= gradeF))))
-    .filter((a) => !completion || (completion === 'done' ? a.assigned > 0 && a.completed >= a.assigned : a.completed < a.assigned));
+  const activities = applyActivityFilters(all, url.searchParams, want);
   return json({ activities });
 }
 
