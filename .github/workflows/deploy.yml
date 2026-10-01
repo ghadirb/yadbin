@@ -4,6 +4,8 @@ name: Deploy (Cloudflare Worker + Student Web)
 #   CLOUDFLARE_API_TOKEN  (Workers Scripts:Edit, D1:Edit, Pages:Edit, Account Settings:Read)
 #   JWT_SECRET            (>= 32 random characters)
 # Optional secret: CLOUDFLARE_ACCOUNT_ID (auto-detected when the token sees exactly one account)
+# Optional secret: AVALAI_API_KEY (enables the AvalAI provider of the AI Activity Builder; without it the rule engine is used)
+# Optional repo variable: AVALAI_MODEL (pinned model id; default in code)
 on:
   workflow_dispatch:
     inputs:
@@ -75,7 +77,11 @@ jobs:
           test -n "$URL" || { echo "::error::could not detect Worker URL"; exit 1; }
           echo "WORKER_URL=$URL" >> "$GITHUB_ENV"
           printf '%s' "$JWT" | npx wrangler secret put JWT_SECRET
-        env: { JWT: "${{ secrets.JWT_SECRET }}" }
+          if [ -n "$AVALAI" ]; then printf '%s' "$AVALAI" | npx wrangler secret put AVALAI_API_KEY; else echo "AVALAI_API_KEY not set → AI builder uses the rule engine"; fi
+        env:
+          JWT: "${{ secrets.JWT_SECRET }}"
+          AVALAI: "${{ secrets.AVALAI_API_KEY }}"
+
 
       - name: Smoke test
         run: |
