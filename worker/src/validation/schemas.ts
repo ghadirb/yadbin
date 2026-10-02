@@ -80,8 +80,8 @@ export const activitySchema = z.object({
   level: z.enum(LEVEL_CODES, { error: 'سطح فعالیت معتبر نیست.' }).nullable().optional(),
   skills: z.array(z.enum(SKILL_CODES, { error: 'مهارت معتبر نیست.' })).max(5, 'حداکثر ۵ مهارت').nullable().optional(),
   templateId: z.string().max(40).nullable().optional(),
-  /** v1.2 workflow opt-in keeps legacy API clients publish-compatible. */
-  requiresPreview: z.boolean().default(false),
+  // Accepted only for forward-compatible clients. New activities always require preview.
+  requiresPreview: z.boolean().optional(),
 }).superRefine(rangeCheck).superRefine(gradeRangeCheck);
 export const activityUpdateSchema = z.object({
   title: z.string().trim().max(80, 'عنوان خیلی بلند است.').nullable().optional(),

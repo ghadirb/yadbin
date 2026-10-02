@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { activityFit, computeAge, inferGradeOrder } from '../src/education/catalog';
-import { createEnv, registerTeacher, type TestEnv } from './helpers';
+import { createEnv, publishForTest, registerTeacher, type TestEnv } from './helpers';
 
 let t: TestEnv;
 beforeAll(async () => { t = await createEnv(); }, 60_000);
@@ -230,6 +230,8 @@ describe('v1.2 step 3 — age/grade based game tuning', () => {
     const old = (await t.api('POST', `/api/classes/${legacyClass.id}/students`, { name: 'بدون اطلاعات' }, token)).data.added[0];
     const a1 = (await t.api('POST', '/api/activities', { classId: c.id, gameType: 'memory', difficultyMode: 'medium', questionCount: 5 }, token)).data;
     const a2 = (await t.api('POST', '/api/activities', { classId: legacyClass.id, gameType: 'memory', difficultyMode: 'medium', questionCount: 5 }, token)).data;
+    await publishForTest(t, token, a1.activity.id);
+    await publishForTest(t, token, a2.activity.id);
     const play = async (url: string) => (await t.api('GET', `/api/play/${url.split('/play/')[1]}`)).data;
     const young = await play(a1.links[0].url);
     const plain = await play(a2.links[0].url);
@@ -251,6 +253,7 @@ describe('v1.2 step 3 — age/grade based game tuning', () => {
     const c = (await t.api('POST', '/api/classes', { name: 'نهم', gradeCode: 'g9' }, token)).data.class;
     await t.api('POST', `/api/classes/${c.id}/students`, { name: 'نهمی' }, token);
     const a = (await t.api('POST', '/api/activities', { classId: c.id, gameType: 'problem_solving', difficultyMode: 'hard', questionCount: 5 }, token)).data;
+    await publishForTest(t, token, a.activity.id);
     const tk = a.links[0].url.split('/play/')[1];
     const p = (await t.api('GET', `/api/play/${tk}`)).data;
     const qs = p.pools['3'] as any[];
@@ -319,6 +322,7 @@ async function finish(token: string, url: string, events: unknown[]) {
 async function runActivity(token: string, classId: string, studentId: string, gameType: string, events: unknown[], extra: object = {}) {
   const a = await t.api('POST', '/api/activities', { classId, gameType, difficultyMode: 'easy', questionCount: 5, studentIds: [studentId], ...extra }, token);
   expect(a.status).toBe(201);
+  await publishForTest(t, token, a.data.activity.id);
   await finish(token, a.data.links[0].url, events);
   return a.data;
 }

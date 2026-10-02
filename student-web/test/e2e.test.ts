@@ -1,6 +1,6 @@
 // Runs the REAL session controller against the REAL Worker (workerd + D1) with a scripted "bot" child.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createEnv, registerTeacher, type TestEnv } from '../../worker/test/helpers';
+import { createEnv, publishForTest, registerTeacher, type TestEnv } from '../../worker/test/helpers';
 import { runSession, type GameUi } from '../src/session/controller';
 import { buildAttentionEvent, buildMemoryEvent, buildProblemEvent } from '../src/question-engine/events';
 import { MemoryKv } from '../src/storage/kv';
@@ -58,6 +58,7 @@ describe('student web ↔ real worker', () => {
     it(`${game}: full session delivered, one result, then "already done"`, async () => {
       const { A, classId, students } = await setup();
       const act = await t.api('POST', '/api/activities', { classId, gameType: game, difficultyMode: 'adaptive', questionCount: 10 }, A.token);
+      await publishForTest(t, A.token, act.data.activity.id);
       const token = tok(act.data.links[0].url);
       const log: string[] = [], store = new MemoryKv();
       expect(await runSession({ token, api: bridge(token), store, ui: botUi(log) })).toBe('finished');
@@ -79,6 +80,7 @@ describe('student web ↔ real worker', () => {
   it('resume: closing mid-game continues from saved progress with the same questions', async () => {
     const { A, classId } = await setup();
     const act = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'easy', questionCount: 10 }, A.token);
+    await publishForTest(t, A.token, act.data.activity.id);
     const token = tok(act.data.links[0].url), store = new MemoryKv();
     const log1: string[] = [];
     const crash = botUi(log1, 1, (n) => { if (n === 4) throw new Error('tab closed'); });
@@ -96,6 +98,7 @@ describe('student web ↔ real worker', () => {
   it('offline at the end: result kept locally, delivered after reconnect, exactly one row', async () => {
     const { A, classId } = await setup();
     const act = await t.api('POST', '/api/activities', { classId, gameType: 'memory', questionCount: 8 }, A.token);
+    await publishForTest(t, A.token, act.data.activity.id);
     const token = tok(act.data.links[0].url), store = new MemoryKv();
     const ctl = { online: true }, api = bridge(token, ctl), log: string[] = [];
     // connection drops after the game started (game itself needs no network)
@@ -129,6 +132,7 @@ describe('student web ↔ real worker', () => {
     await runSession({ token: tok(act.data.links[0].url), api: bridge('x'), store: new MemoryKv(), ui: botUi(log2) });
     expect(log2[0]).toBe('error:canceled:این فعالیت دیگر فعال نیست.');
     const act2 = await t.api('POST', '/api/activities', { classId, gameType: 'memory' }, A.token);
+    await publishForTest(t, A.token, act2.data.activity.id);
     await t.db.prepare('UPDATE activities SET expires_at = ? WHERE id = ?').bind('2000-01-01T00:00:00.000Z', act2.data.activity.id).run();
     const log3: string[] = [];
     await runSession({ token: tok(act2.data.links[0].url), api: bridge('x'), store: new MemoryKv(), ui: botUi(log3) });
@@ -138,6 +142,7 @@ describe('student web ↔ real worker', () => {
   it('adaptive session: strong answers raise difficulty; weak answers do not', async () => {
     const { A, classId } = await setup();
     const act = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'adaptive', questionCount: 10 }, A.token);
+    await publishForTest(t, A.token, act.data.activity.id);
     const token = tok(act.data.links[0].url), store = new MemoryKv(), log: string[] = [];
     await runSession({ token, api: bridge(token), store, ui: botUi(log, 1) });
     const ids = log.filter((l) => l.startsWith('q:')).map((l) => l.slice(2));

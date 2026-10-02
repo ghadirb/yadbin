@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { activityDto, effectiveGradeOrder, GAME_NAMES_FA, getOwnedActivity, getOwnedClass } from '../db/queries';
 import { activityFit, computeAge, GRADES, gradeByCode, inferGradeOrder, type Fit } from '../education/catalog';
+import { tuningFor } from '../education/tuning';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, newPlayToken, nowIso } from '../utils/ids';
 import { filterTemplates, templateById, templateDto } from '../education/templates';
@@ -15,7 +16,6 @@ interface NewActivity {
   classId: string; gameType: string; difficultyMode: string; questionCount: number;
   title: string | null; description: string | null; suggestedMinutes: number | null; expiresInDays?: number;
   ageMin?: number | null; ageMax?: number | null; gradeMin?: string | null; gradeMax?: string | null; level?: string | null; skills?: string[] | null; templateId?: string | null;
-  requiresPreview?: boolean;
 }
 
 /** Fit of each student to an activity's age/grade range. Advisory only: it never blocks creation or assignment. */
@@ -62,12 +62,11 @@ async function insertActivity(env: Env, teacherId: string, a: NewActivity, chose
   const expires = new Date(Date.now() + (a.expiresInDays ?? DEFAULT_EXPIRY_DAYS) * 86400_000).toISOString();
   const links = chosen.map((s) => ({ rowId: newId(), studentId: s.id, name: s.display_name, token: newPlayToken() }));
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO activities (id,teacher_id,class_id,game_type,difficulty_mode,question_count,status,created_at,expires_at,title,description,suggested_minutes,age_min,age_max,grade_min,grade_max,activity_level,skills_json,template_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    env.DB.prepare('INSERT INTO activities (id,teacher_id,class_id,game_type,difficulty_mode,question_count,status,created_at,expires_at,title,description,suggested_minutes,age_min,age_max,grade_min,grade_max,activity_level,skills_json,template_id,publish_state,requires_preview) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .bind(id, teacherId, a.classId, a.gameType, a.difficultyMode, a.questionCount, 'active', now, expires, a.title, a.description, a.suggestedMinutes,
-        a.ageMin ?? null, a.ageMax ?? null, gradeByCode(a.gradeMin)?.order ?? null, gradeByCode(a.gradeMax)?.order ?? null, a.level ?? null, a.skills?.length ? JSON.stringify(a.skills) : null, a.templateId ?? null),
+        a.ageMin ?? null, a.ageMax ?? null, gradeByCode(a.gradeMin)?.order ?? null, gradeByCode(a.gradeMax)?.order ?? null, a.level ?? null, a.skills?.length ? JSON.stringify(a.skills) : null, a.templateId ?? null, 'draft', 1),
     ...links.map((l) => env.DB.prepare('INSERT INTO activity_students (id,activity_id,student_id,token,status) VALUES (?,?,?,?,?)').bind(l.rowId, id, l.studentId, l.token, 'pending')),
   ]);
-  if (a.requiresPreview) await env.DB.prepare("UPDATE activities SET publish_state = 'draft', requires_preview = 1 WHERE id = ?").bind(id).run();
   const row = await env.DB.prepare('SELECT * FROM activities WHERE id = ?').bind(id).first<any>();
   const fits = await fitFor(env, teacherId, row, chosen.map((c) => c.id));
   return {
@@ -217,7 +216,6 @@ export async function duplicateActivity(req: Request, env: Env, teacherId: strin
     title, description: a.description, suggestedMinutes: a.suggested_minutes,
     ageMin: a.age_min, ageMax: a.age_max, gradeMin: gradeByOrderCode(a.grade_min), gradeMax: gradeByOrderCode(a.grade_max), level: a.activity_level,
     skills: a.skills_json ? JSON.parse(a.skills_json) : null, templateId: a.template_id,
-    requiresPreview: (a.publish_state ?? 'published') !== 'published',
   }, chosen);
   return json(out, 201);
 }
@@ -233,7 +231,8 @@ export async function startPreview(env: Env, teacherId: string, id: string) {
   const a = await getOwnedActivity(env.DB, teacherId, id);
   if (a.status === 'canceled') throw new HttpError(409, 'activity_canceled', 'این فعالیت لغو شده است.');
   const token = newPlayToken();
-  const tuning = Math.max(-1, Math.min(1, (a.activity_level === 'introductory' ? -1 : a.activity_level === 'advanced' ? 1 : 0) + ((a.grade_min ?? a.grade_max ?? 0) >= 6 ? 1 : 0)));
+  // A preview has no student identity. Match student-play's fallback: grade-range midpoint plus activity level.
+  const tuning = tuningFor({ level: a.activity_level, gradeMin: a.grade_min, gradeMax: a.grade_max });
   await env.DB.prepare('INSERT INTO teacher_preview_sessions (id,activity_id,teacher_id,token,started_at,tuning) VALUES (?,?,?,?,?,?)')
     .bind(newId(), id, teacherId, token, nowIso(), tuning).run();
   await env.DB.prepare("UPDATE activities SET publish_state = CASE WHEN publish_state = 'draft' THEN 'testing' ELSE publish_state END WHERE id = ? AND teacher_id = ?").bind(id, teacherId).run();
@@ -255,7 +254,8 @@ export async function recordPreviewFeedback(req: Request, env: Env, teacherId: s
 
 export async function publishActivity(env: Env, teacherId: string, id: string) {
   const a = await getOwnedActivity(env.DB, teacherId, id);
-  if (!a.teacher_approved_at) throw new HttpError(409, 'teacher_approval_required', 'ابتدا فعالیت را آزمایش و تأیید کنید.');
+  if (!a.previewed_at || !a.preview_feedback || !a.teacher_approved_at || a.publish_state !== 'ready_to_publish')
+    throw new HttpError(409, 'teacher_approval_required', 'ابتدا فعالیت را آزمایش، مناسب بودن آن را تأیید و برای انتشار آماده کنید.');
   if (a.status === 'canceled') throw new HttpError(409, 'activity_canceled', 'این فعالیت لغو شده است.');
   await env.DB.prepare("UPDATE activities SET publish_state = 'published' WHERE id=? AND teacher_id=?").bind(id, teacherId).run();
   return getActivity(env, teacherId, id);

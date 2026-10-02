@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createEnv, memoryEvents, registerTeacher, type TestEnv } from './helpers';
+import { createEnv, memoryEvents, publishForTest, registerTeacher, type TestEnv } from './helpers';
 
 let t: TestEnv;
 beforeAll(async () => { t = await createEnv(); }, 60_000);
@@ -15,6 +15,7 @@ async function setup(token: string, n = 3) {
 async function makeActivity(token: string, classId: string, extra: object = {}) {
   const r = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'easy', questionCount: 5, ...extra }, token);
   expect(r.status).toBe(201);
+  await publishForTest(t, token, r.data.activity.id);
   return r.data as { activity: any; links: { studentId: string; url: string }[] };
 }
 async function play(url: string, correct: number, n = 5) {
@@ -86,6 +87,7 @@ describe('v1.1 activities', () => {
     let r = await t.api('PUT', `/api/activities/${id}`, { title: 'عنوان جدید', description: 'توضیح', suggestedMinutes: 8, difficultyMode: 'hard', questionCount: 8 }, token);
     expect(r.status).toBe(200);
     expect(r.data.activity).toMatchObject({ title: 'عنوان جدید', description: 'توضیح', suggestedMinutes: 8, difficultyMode: 'hard', questionCount: 8 });
+    await publishForTest(t, token, id);
     await t.api('GET', `/api/play/${tokenOf(act.links[0].url)}`); // a child starts
     r = await t.api('PUT', `/api/activities/${id}`, { difficultyMode: 'easy' }, token);
     expect(r.status).toBe(409); expect(r.data.error).toBe('activity_in_progress');

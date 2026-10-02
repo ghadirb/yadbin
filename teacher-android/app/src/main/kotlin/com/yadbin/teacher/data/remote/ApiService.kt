@@ -121,7 +121,6 @@ class ApiService(private val c: ApiClient) {
     suspend fun createActivityV12(spec: ActivitySpec): ActivityCreated {
         val body = buildJsonObject {
             put("classId", spec.classId); put("gameType", spec.gameType); put("difficultyMode", spec.difficultyMode); put("questionCount", spec.questionCount)
-            put("requiresPreview", true)
             put("studentIds", if (spec.studentIds == null) JsonPrimitive("all") else JsonArray(spec.studentIds.map { JsonPrimitive(it) }))
             spec.title?.takeIf { it.isNotBlank() }?.let { put("title", it.trim()) }
             spec.description?.takeIf { it.isNotBlank() }?.let { put("description", it.trim()) }

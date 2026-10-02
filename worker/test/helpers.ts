@@ -46,3 +46,23 @@ export async function registerTeacher(t: TestEnv, name = 'معلم آزمون') 
 export function memoryEvents(n: number, correctCount: number, difficulty = 1) {
   return Array.from({ length: n }, (_, i) => ({ sequenceLength: 4, displayDuration: 1500, difficulty, isReverse: false, correct: i < correctCount, attempts: 1, responseTime: 2000, mistakes: i < correctCount ? 0 : 1 }));
 }
+
+/** Completes the same mandatory teacher workflow that production activities use. */
+export async function publishForTest(t: TestEnv, teacherToken: string, activityId: string) {
+  const started = await t.api('POST', `/api/activities/${activityId}/preview`, undefined, teacherToken);
+  if (started.status !== 200) throw new Error(`preview start failed: ${started.status}`);
+  const previewToken = started.data.url.split('/preview/')[1];
+  const preview = await t.api('GET', `/api/preview/${previewToken}`);
+  if (preview.status !== 200) throw new Error(`preview load failed: ${preview.status}`);
+  const questions = preview.data.pools[String(preview.data.startDifficulty)] as any[];
+  const events = preview.data.game === 'memory' ? memoryEvents(questions.length, questions.length, questions[0]?.difficulty ?? 1)
+    : preview.data.game === 'attention' ? questions.map((q) => ({ gridSize: q.gridSize, targetType: q.rule.select, targetCount: q.targetCount, correctTargets: q.targetCount, wrongTargets: 0, missedTargets: 0, falseClicks: 0, reactionTime: 1200, totalTime: 3000, difficulty: q.difficulty, ruleChanged: q.ruleChanged, phase: q.phase }))
+      : questions.map((q) => ({ questionId: q.id, attempts: 1, hintsUsed: 0, responseTime: 1200, finalAnswer: q.correctOption }));
+  const completed = await t.api('POST', `/api/preview/${previewToken}/complete`, { sessionId: preview.data.session.id, events }, teacherToken);
+  if (completed.status !== 200) throw new Error(`preview complete failed: ${completed.status}`);
+  const feedback = await t.api('POST', `/api/activities/${activityId}/preview-feedback`, { feedback: 'suitable' }, teacherToken);
+  if (feedback.status !== 200) throw new Error(`preview feedback failed: ${feedback.status}`);
+  const published = await t.api('POST', `/api/activities/${activityId}/publish`, undefined, teacherToken);
+  if (published.status !== 200) throw new Error(`publish failed: ${published.status}`);
+  return published.data;
+}
