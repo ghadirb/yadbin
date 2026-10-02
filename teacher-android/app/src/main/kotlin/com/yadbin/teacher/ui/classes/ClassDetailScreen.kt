@@ -222,7 +222,7 @@ fun ClassDetailScreen(
         }
     }
     if (showDeleteClass) {
-        ConfirmDialog("حذف کلاس", "کلاس با فعالیت‌ها و نتایج آن حذف می‌شود. این کار قابل بازگشت نیست.", "حذف کلاس",
+        ConfirmDialog("حذف کلاس", "کلاس با فعالیت‌ها و نتایج آن حذف می‌شود. اطلاعات و تصویر محلی دانش‌آموزان حذف نمی‌شود. این کار قابل بازگشت نیست.", "حذف کلاس",
             { showDeleteClass = false; vm.deleteClass(onBack) }, { showDeleteClass = false })
     }
 }

@@ -1,12 +1,13 @@
 import { Miniflare } from 'miniflare';
 import { buildSync } from 'esbuild';
 import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const MIGRATIONS_DIR = new URL('../migrations/', import.meta.url);
 const SQL = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8')).join('\n');
 
 export async function createEnv() {
-  const out = buildSync({ entryPoints: [new URL('../src/index.ts', import.meta.url).pathname], bundle: true, format: 'esm', write: false, platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'] });
+  const out = buildSync({ entryPoints: [fileURLToPath(new URL('../src/index.ts', import.meta.url))], bundle: true, format: 'esm', write: false, platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'] });
   const mf = new Miniflare({
     workers: [{
       name: 'yadbin', modules: true, script: out.outputFiles[0].text, compatibilityDate: '2025-01-01',

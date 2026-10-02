@@ -23,13 +23,13 @@ const EXPIRED = () => new HttpError(410, 'expired', 'این فعالیت دیگ�
 
 interface PlayRow {
   ast_id: string; student_id: string; token: string; ast_status: string;
-  game_type: GameType; difficulty_mode: DifficultyMode; question_count: number; act_status: string; expires_at: string | null;
+  game_type: GameType; difficulty_mode: DifficultyMode; question_count: number; act_status: string; publish_state: string | null; requires_preview: number; expires_at: string | null;
 }
 async function loadByToken(env: Env, token: string): Promise<PlayRow> {
   if (!TOKEN_RE.test(token)) throw INVALID(); // cheap reject before touching the DB
   const row = await env.DB.prepare(
     `SELECT ast.id AS ast_id, ast.student_id, ast.token, ast.status AS ast_status,
-            a.game_type, a.difficulty_mode, a.question_count, a.status AS act_status, a.expires_at
+            a.game_type, a.difficulty_mode, a.question_count, a.status AS act_status, a.publish_state, a.requires_preview, a.expires_at
        FROM activity_students ast JOIN activities a ON a.id = ast.activity_id WHERE ast.token = ?`,
   ).bind(token).first<PlayRow>();
   if (!row) throw INVALID();
@@ -71,6 +71,7 @@ export async function getPlay(env: Env, token: string, req?: Request) {
   const row = await loadByToken(env, token);
   await rateLimit(env, `play:token:${token}`, 200, 3600);
   if (row.act_status === 'canceled') throw INACTIVE();
+  if (row.requires_preview && row.publish_state !== 'published') throw new HttpError(403, 'not_published', 'این فعالیت هنوز منتشر نشده است.');
   if (row.ast_status === 'completed') return json({ status: 'completed', message: 'این فعالیت قبلاً انجام شده است.' });
   if (row.expires_at && row.expires_at < nowIso()) throw EXPIRED();
 
@@ -98,6 +99,44 @@ export async function getPlay(env: Env, token: string, req?: Request) {
     pools: buildPools(row.game_type, seed, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(session.tuning)),
     version: 1,
   });
+}
+
+interface PreviewRow {
+  id: string; activity_id: string; teacher_id: string; token: string; status: string; started_at: string; tuning: number;
+  game_type: GameType; difficulty_mode: DifficultyMode; question_count: number;
+}
+async function loadPreview(env: Env, token: string): Promise<PreviewRow> {
+  if (!TOKEN_RE.test(token)) throw INVALID();
+  const row = await env.DB.prepare(`SELECT p.*, a.game_type, a.difficulty_mode, a.question_count
+    FROM teacher_preview_sessions p JOIN activities a ON a.id = p.activity_id WHERE p.token = ?`).bind(token).first<PreviewRow>();
+  if (!row) throw INVALID();
+  return row;
+}
+
+/** Uses the production question generator without creating a student session or result. */
+export async function getPreview(env: Env, token: string, req?: Request) {
+  if (req) await rateLimitIp(env, req, 'preview', 120, 60);
+  const row = await loadPreview(env, token);
+  await rateLimit(env, `preview:token:${token}`, 120, 3600);
+  if (row.status === 'completed') return json({ status: 'completed', message: 'آزمایش قبلاً انجام شده است.' });
+  return json({
+    status: 'ready', session: { id: row.id, startedAt: row.started_at }, game: row.game_type,
+    difficultyMode: row.difficulty_mode, questionCount: row.question_count,
+    startDifficulty: row.difficulty_mode === 'adaptive' ? 1 : MODE_TO_LEVEL[row.difficulty_mode], seed: row.id,
+    pools: buildPools(row.game_type, row.id, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(row.tuning)),
+    version: 1, preview: true,
+  });
+}
+
+export async function completePreview(req: Request, env: Env, token: string) {
+  const row = await loadPreview(env, token);
+  const body = parse(completeSchema, await readJson(req));
+  if (body.sessionId !== row.id) throw new HttpError(404, 'invalid_session', 'جلسه معتبر نیست.');
+  if (row.status === 'completed') return json({ ok: true, duplicate: true });
+  const { metrics } = scoreEvents(row.game_type, body.events, row.id, row.difficulty_mode, row.question_count, row.tuning);
+  if (metrics.sampleCount < 1) throw new HttpError(422, 'no_valid_events', 'نتیجه معتبر نیست.');
+  await env.DB.prepare("UPDATE teacher_preview_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'started'").bind(nowIso(), row.id).run();
+  return json({ ok: true, duplicate: false, preview: true, feedback: childFeedback(metrics.accuracy) });
 }
 
 function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: DifficultyMode, count: number, tuning = 0): { metrics: GameMetrics; events: unknown[]; ignored: number } {

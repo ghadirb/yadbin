@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -62,6 +63,15 @@ class ActivityViewModel(private val repo: Repository, private val id: String) : 
     fun save(title: String, description: String, minutes: Int?) = doAction("تغییرات ذخیره شد.") { repo.updateActivity(id, title, description, minutes) }
     fun setArchived(archived: Boolean) = doAction(if (archived) "فعالیت آرشیو شد." else "فعالیت از آرشیو خارج شد.") { repo.setActivityArchived(id, archived) }
     fun regenerate(studentId: String) = doAction("لینک جدید ساخته شد؛ لینک قبلی دیگر کار نمی‌کند.") { repo.regenerateLink(id, studentId) }
+    fun preview(onOpen: (String) -> Unit) {
+        viewModelScope.launch {
+            try { onOpen(repo.startPreview(id).url); _message.value = "آزمایش فعالیت در مرورگر باز شد."; refresh() }
+            catch (e: ApiException) { _message.value = errorText(e) }
+            catch (e: NetworkException) { _message.value = errorText(e) }
+        }
+    }
+    fun feedback(value: String) = doAction(if (value == "suitable") "فعالیت برای انتشار آماده شد." else "بازخورد ثبت شد؛ فعالیت را ویرایش و دوباره آزمایش کنید.") { repo.previewFeedback(id, value) }
+    fun publish() = doAction("فعالیت منتشر شد و لینک‌های دانش‌آموزان فعال هستند.") { repo.publishActivity(id) }
     private fun doAction(success: String, block: suspend () -> Any) {
         viewModelScope.launch {
             try { block(); _message.value = success; refresh() }
@@ -89,6 +99,8 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
     var confirmCancel by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var regenFor by remember { mutableStateOf<ActivityStudent?>(null) }
+    var showFeedback by remember { mutableStateOf(false) }
+    var showPreviewSummary by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -111,6 +123,9 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                         a.suggestedMinutes?.let { Text("زمان پیشنهادی: ${it.fa()} دقیقه", style = MaterialTheme.typography.bodySmall) }
                         InfoChips(listOfNotNull(a.levelLabel, com.yadbin.teacher.core.utils.Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), com.yadbin.teacher.core.utils.Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels)
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (a.publishState != "published" && a.lifecycle != "archived") TextButton(onClick = { showPreviewSummary = true }) { Text("آزمایش فعالیت") }
+                            if (a.publishState == "testing") TextButton(onClick = { showFeedback = true }) { Text("ثبت نتیجه آزمایش") }
+                            if (a.publishState == "ready_to_publish") TextButton(onClick = vm::publish) { Text("تأیید و انتشار") }
                             TextButton(onClick = { showEdit = true }) { Text("ویرایش") }
                             TextButton(onClick = { vm.duplicate(onOpenActivity) }) { Text("ساخت نسخه جدید") }
                             TextButton(onClick = { vm.setArchived(a.lifecycle != "archived") }) { Text(if (a.lifecycle == "archived") "خروج از آرشیو" else "آرشیو") }
@@ -134,7 +149,7 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                                         TextButton(onClick = { copyLink(ctx, st.url); }) { Text("کپی لینک") }
                                         TextButton(onClick = { qrFor = st }) { Text("QR") }
                                         TextButton(onClick = { shareLink(ctx, st.url) }) { Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("اشتراک‌گذاری") }
-                                        if (st.status != "completed" && a.status == "active") TextButton(onClick = { regenFor = st }) { Text("لینک جدید") }
+                                        if (st.status != "completed" && a.status == "active" && a.publishState == "published") TextButton(onClick = { regenFor = st }) { Text("لینک جدید") }
                                         if (st.status == "completed") TextButton(onClick = { onOpenStudent(st.studentId) }) { Text("گزارش") }
                                     }
                                 }
@@ -169,6 +184,35 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
         if (cur != null) EditActivityDialog(cur.title ?: "", cur.description ?: "", cur.suggestedMinutes, { showEdit = false }) { t, d, m -> showEdit = false; vm.save(t, d, m) }
     }
     if (confirmCancel) ConfirmDialog("لغو فعالیت", "لینک‌های این فعالیت غیرفعال می‌شوند.", "لغو فعالیت", { confirmCancel = false; vm.cancel() }, { confirmCancel = false })
+    if (showFeedback) PreviewFeedbackDialog({ showFeedback = false }) { feedback -> showFeedback = false; vm.feedback(feedback) }
+    val activity = (state as? Ui.Ready)?.data?.activity
+    if (showPreviewSummary && activity != null) PreviewSummaryDialog(activity, { showPreviewSummary = false }) { showPreviewSummary = false; vm.preview { url -> ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
+}
+
+@Composable
+private fun PreviewSummaryDialog(activity: com.yadbin.teacher.domain.models.ActivityInfo, onDismiss: () -> Unit, onStart: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("آزمایش فعالیت") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("نوع: ${Labels.game(activity.gameType)}")
+            Text("سطح دشواری: ${Labels.difficulty(activity.difficultyMode)}")
+            Text("تعداد مراحل: ${activity.questionCount.fa()}")
+            activity.gradeMinLabel?.let { Text("پایه: $it") }
+            activity.suggestedMinutes?.let { Text("زمان پیشنهادی: ${it.fa()} دقیقه") }
+            Text("این اجرا فقط برای آزمایش شماست و در گزارش دانش‌آموزان ثبت نمی‌شود.", style = MaterialTheme.typography.bodySmall)
+        }
+    }, confirmButton = { TextButton(onClick = onStart) { Text("شروع آزمایش") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } })
+}
+
+@Composable
+private fun PreviewFeedbackDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("آزمایش تمام شد") }, text = {
+        Column {
+            Text("تجربه شما چگونه بود؟")
+            listOf("suitable" to "مناسب است", "too_easy" to "کمی آسان است", "too_hard" to "کمی سخت است", "needs_edit" to "نیاز به ویرایش دارد").forEach { (value, label) ->
+                TextButton(onClick = { onSelect(value) }, modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) }
+            }
+        }
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text("بستن") } })
 }
 
 @Composable

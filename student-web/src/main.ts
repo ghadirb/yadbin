@@ -12,10 +12,11 @@ async function boot() {
   window.__yadbinReady = true;
   const root = document.getElementById('app')!;
   root.before(offlineBanner());
-  const token = tokenFromPath(location.pathname);
-  const api = createApi(import.meta.env.VITE_API_BASE ?? '');
+  const previewMatch = /^\/preview\/([^/]+)$/.exec(location.pathname);
+  const token = previewMatch?.[1] ?? tokenFromPath(location.pathname);
+  const api = createApi(import.meta.env.VITE_API_BASE ?? '', !!previewMatch);
   const ui = createDomUi(root, async () => {
-    if (!token || !api.progress) return null;
+    if (!token || !api.progress || previewMatch) return null;
     const r = await api.progress(token);
     return r.kind === 'ok' ? r.data : null;
   });

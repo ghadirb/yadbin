@@ -59,7 +59,8 @@ export const activityDto = (a: any, assigned = 0, completed = 0) => {
   return {
     id: a.id, classId: a.class_id, gameType: a.game_type, difficultyMode: a.difficulty_mode, questionCount: a.question_count,
     title: a.title || GAME_NAMES_FA[a.game_type] || a.game_type, description: a.description ?? null, suggestedMinutes: a.suggested_minutes ?? null,
-    status: a.status, lifecycle, lifecycleLabel: LIFECYCLE_LABELS_FA[lifecycle], archivedAt: a.archived_at ?? null,
+    status: a.status, publishState: a.publish_state ?? (a.status === 'active' ? 'published' : a.status), lifecycle, lifecycleLabel: LIFECYCLE_LABELS_FA[lifecycle], archivedAt: a.archived_at ?? null,
+    previewedAt: a.previewed_at ?? null, previewFeedback: a.preview_feedback ?? null, teacherApprovedAt: a.teacher_approved_at ?? null,
     createdAt: a.created_at, expiresAt: a.expires_at, assigned, completed,
     ageMin: a.age_min ?? null, ageMax: a.age_max ?? null,
     gradeMin: gradeByOrder(a.grade_min)?.code ?? null, gradeMax: gradeByOrder(a.grade_max)?.code ?? null,

@@ -102,6 +102,33 @@ describe('Activities & tokens', () => {
   });
 });
 
+describe('Teacher activity preview', () => {
+  it('uses production pools but never creates a student result or unlocks links before approval', async () => {
+    const { token } = await registerTeacher(t);
+    const { classId } = await setupClass(token, 1);
+    const created = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'medium', questionCount: 5, requiresPreview: true }, token);
+    expect(created.status).toBe(201);
+    const activityId = created.data.activity.id;
+    const studentToken = tokenOf(created.data.links[0].url);
+    expect((await t.api('GET', `/api/play/${studentToken}`)).status).toBe(403);
+
+    const started = await t.api('POST', `/api/activities/${activityId}/preview`, undefined, token);
+    expect(started.status).toBe(200);
+    const previewToken = started.data.url.split('/preview/')[1];
+    const preview = await t.api('GET', `/api/preview/${previewToken}`);
+    expect(preview.status).toBe(200);
+    expect(preview.data.pools['2']).toHaveLength(5);
+    const complete = await t.api('POST', `/api/preview/${previewToken}/complete`, { sessionId: preview.data.session.id, events: memoryEvents(5, 4, 2) });
+    expect(complete.status).toBe(200);
+    expect((await t.db.prepare('SELECT COUNT(*) AS n FROM game_results').first<{ n: number }>())?.n).toBe(0);
+    expect((await t.db.prepare("SELECT COUNT(*) AS n FROM activity_students WHERE status != 'pending'").first<{ n: number }>())?.n).toBe(0);
+
+    expect((await t.api('POST', `/api/activities/${activityId}/preview-feedback`, { feedback: 'suitable' }, token)).status).toBe(200);
+    expect((await t.api('POST', `/api/activities/${activityId}/publish`, undefined, token)).status).toBe(200);
+    expect((await t.api('GET', `/api/play/${studentToken}`)).status).toBe(200);
+  });
+});
+
 describe('Password recovery', () => {
   it('registers with a recovery code, resets the password with it, and rotates the code', async () => {
     const reg = await t.api('POST', '/api/auth/register', { name: 'معلم', phone: '09125550101', password: 'oldpass123' });

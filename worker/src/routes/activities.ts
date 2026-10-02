@@ -15,6 +15,7 @@ interface NewActivity {
   classId: string; gameType: string; difficultyMode: string; questionCount: number;
   title: string | null; description: string | null; suggestedMinutes: number | null; expiresInDays?: number;
   ageMin?: number | null; ageMax?: number | null; gradeMin?: string | null; gradeMax?: string | null; level?: string | null; skills?: string[] | null; templateId?: string | null;
+  requiresPreview?: boolean;
 }
 
 /** Fit of each student to an activity's age/grade range. Advisory only: it never blocks creation or assignment. */
@@ -66,6 +67,7 @@ async function insertActivity(env: Env, teacherId: string, a: NewActivity, chose
         a.ageMin ?? null, a.ageMax ?? null, gradeByCode(a.gradeMin)?.order ?? null, gradeByCode(a.gradeMax)?.order ?? null, a.level ?? null, a.skills?.length ? JSON.stringify(a.skills) : null, a.templateId ?? null),
     ...links.map((l) => env.DB.prepare('INSERT INTO activity_students (id,activity_id,student_id,token,status) VALUES (?,?,?,?,?)').bind(l.rowId, id, l.studentId, l.token, 'pending')),
   ]);
+  if (a.requiresPreview) await env.DB.prepare("UPDATE activities SET publish_state = 'draft', requires_preview = 1 WHERE id = ?").bind(id).run();
   const row = await env.DB.prepare('SELECT * FROM activities WHERE id = ?').bind(id).first<any>();
   const fits = await fitFor(env, teacherId, row, chosen.map((c) => c.id));
   return {
@@ -168,11 +170,17 @@ export async function updateActivity(req: Request, env: Env, teacherId: string, 
   const b = parse(activityUpdateSchema, await readJson(req));
   const c = await counts(env, id);
   const settingsChange = (b.difficultyMode !== undefined && b.difficultyMode !== a.difficulty_mode) || (b.questionCount !== undefined && b.questionCount !== a.question_count);
+  const previewAffectingChange = settingsChange ||
+    (b.level !== undefined && b.level !== a.activity_level) ||
+    (b.ageMin !== undefined && b.ageMin !== a.age_min) || (b.ageMax !== undefined && b.ageMax !== a.age_max) ||
+    (b.gradeMin !== undefined && (gradeByCode(b.gradeMin)?.order ?? null) !== a.grade_min) ||
+    (b.gradeMax !== undefined && (gradeByCode(b.gradeMax)?.order ?? null) !== a.grade_max) ||
+    (b.skills !== undefined && JSON.stringify(b.skills ?? []) !== JSON.stringify(a.skills_json ? JSON.parse(a.skills_json) : []));
   if (settingsChange && c.touched > 0)
     throw new HttpError(409, 'activity_in_progress', 'پس از شروع دانش‌آموزان، سطح دشواری و تعداد سؤال قابل تغییر نیست. از «ساخت نسخه جدید» استفاده کنید.');
   const expires = b.expiresInDays !== undefined ? new Date(Date.now() + b.expiresInDays * 86400_000).toISOString() : a.expires_at;
   await env.DB.prepare(
-    'UPDATE activities SET title=?, description=?, suggested_minutes=?, difficulty_mode=?, question_count=?, expires_at=?, age_min=?, age_max=?, grade_min=?, grade_max=?, activity_level=?, skills_json=? WHERE id=? AND teacher_id=?',
+    'UPDATE activities SET title=?, description=?, suggested_minutes=?, difficulty_mode=?, question_count=?, expires_at=?, age_min=?, age_max=?, grade_min=?, grade_max=?, activity_level=?, skills_json=?, previewed_at=?, preview_feedback=?, teacher_approved_at=?, publish_state=? WHERE id=? AND teacher_id=?',
   ).bind(
     b.title !== undefined ? (b.title || null) : a.title,
     b.description !== undefined ? (b.description || null) : a.description,
@@ -180,7 +188,12 @@ export async function updateActivity(req: Request, env: Env, teacherId: string, 
     b.difficultyMode ?? a.difficulty_mode, b.questionCount ?? a.question_count, expires,
     b.ageMin !== undefined ? b.ageMin : a.age_min, b.ageMax !== undefined ? b.ageMax : a.age_max,
     b.gradeMin !== undefined ? gradeByCode(b.gradeMin)?.order ?? null : a.grade_min, b.gradeMax !== undefined ? gradeByCode(b.gradeMax)?.order ?? null : a.grade_max,
-    b.level !== undefined ? b.level : a.activity_level, b.skills !== undefined ? (b.skills?.length ? JSON.stringify(b.skills) : null) : a.skills_json, id, teacherId,
+    b.level !== undefined ? b.level : a.activity_level, b.skills !== undefined ? (b.skills?.length ? JSON.stringify(b.skills) : null) : a.skills_json,
+    previewAffectingChange && a.requires_preview ? null : a.previewed_at,
+    previewAffectingChange && a.requires_preview ? null : a.preview_feedback,
+    previewAffectingChange && a.requires_preview ? null : a.teacher_approved_at,
+    previewAffectingChange && a.requires_preview ? 'draft' : a.publish_state,
+    id, teacherId,
   ).run();
   return getActivity(env, teacherId, id);
 }
@@ -204,6 +217,7 @@ export async function duplicateActivity(req: Request, env: Env, teacherId: strin
     title, description: a.description, suggestedMinutes: a.suggested_minutes,
     ageMin: a.age_min, ageMax: a.age_max, gradeMin: gradeByOrderCode(a.grade_min), gradeMax: gradeByOrderCode(a.grade_max), level: a.activity_level,
     skills: a.skills_json ? JSON.parse(a.skills_json) : null, templateId: a.template_id,
+    requiresPreview: (a.publish_state ?? 'published') !== 'published',
   }, chosen);
   return json(out, 201);
 }
@@ -212,6 +226,39 @@ export async function cancelActivity(env: Env, teacherId: string, id: string) {
   await getOwnedActivity(env.DB, teacherId, id);
   await env.DB.prepare("UPDATE activities SET status = 'canceled' WHERE id = ? AND teacher_id = ?").bind(id, teacherId).run();
   return json({ ok: true });
+}
+
+/** Starts an isolated teacher run. Its token is never an activity_students token. */
+export async function startPreview(env: Env, teacherId: string, id: string) {
+  const a = await getOwnedActivity(env.DB, teacherId, id);
+  if (a.status === 'canceled') throw new HttpError(409, 'activity_canceled', 'این فعالیت لغو شده است.');
+  const token = newPlayToken();
+  const tuning = Math.max(-1, Math.min(1, (a.activity_level === 'introductory' ? -1 : a.activity_level === 'advanced' ? 1 : 0) + ((a.grade_min ?? a.grade_max ?? 0) >= 6 ? 1 : 0)));
+  await env.DB.prepare('INSERT INTO teacher_preview_sessions (id,activity_id,teacher_id,token,started_at,tuning) VALUES (?,?,?,?,?,?)')
+    .bind(newId(), id, teacherId, token, nowIso(), tuning).run();
+  await env.DB.prepare("UPDATE activities SET publish_state = CASE WHEN publish_state = 'draft' THEN 'testing' ELSE publish_state END WHERE id = ? AND teacher_id = ?").bind(id, teacherId).run();
+  return json({ token, url: `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/preview/${token}` });
+}
+
+export async function recordPreviewFeedback(req: Request, env: Env, teacherId: string, id: string) {
+  await getOwnedActivity(env.DB, teacherId, id);
+  const body = await readJson(req) as { feedback?: string };
+  const feedback = body.feedback;
+  if (!['suitable', 'too_easy', 'too_hard', 'needs_edit'].includes(feedback ?? '')) throw new HttpError(400, 'validation_error', 'بازخورد معتبر نیست.');
+  const completed = await env.DB.prepare("SELECT id FROM teacher_preview_sessions WHERE activity_id = ? AND teacher_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1").bind(id, teacherId).first();
+  if (!completed) throw new HttpError(409, 'preview_required', 'ابتدا فعالیت را کامل آزمایش کنید.');
+  const approved = feedback === 'suitable';
+  await env.DB.prepare('UPDATE activities SET previewed_at=?, preview_feedback=?, teacher_approved_at=?, publish_state=? WHERE id=? AND teacher_id=?')
+    .bind(nowIso(), feedback, approved ? nowIso() : null, approved ? 'ready_to_publish' : 'draft', id, teacherId).run();
+  return getActivity(env, teacherId, id);
+}
+
+export async function publishActivity(env: Env, teacherId: string, id: string) {
+  const a = await getOwnedActivity(env.DB, teacherId, id);
+  if (!a.teacher_approved_at) throw new HttpError(409, 'teacher_approval_required', 'ابتدا فعالیت را آزمایش و تأیید کنید.');
+  if (a.status === 'canceled') throw new HttpError(409, 'activity_canceled', 'این فعالیت لغو شده است.');
+  await env.DB.prepare("UPDATE activities SET publish_state = 'published' WHERE id=? AND teacher_id=?").bind(id, teacherId).run();
+  return getActivity(env, teacherId, id);
 }
 
 export async function setArchived(env: Env, teacherId: string, id: string, archived: boolean) {

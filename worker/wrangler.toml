@@ -7,7 +7,7 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "yadbin-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "9a0696d5-494e-457e-b5b7-2f7191f20409"
 migrations_dir = "migrations"
 
 [vars]

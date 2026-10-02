@@ -57,10 +57,15 @@ add('POST', '/api/activities/:id/archive', true, (_r, env, p, t) => activities.s
 add('POST', '/api/activities/:id/unarchive', true, (_r, env, p, t) => activities.setArchived(env, t, p.id, false));
 add('POST', '/api/activities/:id/regenerate-links', true, (req, env, p, t) => activities.regenerateLinks(req, env, t, p.id));
 add('POST', '/api/activities/:id/cancel', true, (_r, env, p, t) => activities.cancelActivity(env, t, p.id));
+add('POST', '/api/activities/:id/preview', true, (_r, env, p, t) => activities.startPreview(env, t, p.id));
+add('POST', '/api/activities/:id/preview-feedback', true, (req, env, p, t) => activities.recordPreviewFeedback(req, env, t, p.id));
+add('POST', '/api/activities/:id/publish', true, (_r, env, p, t) => activities.publishActivity(env, t, p.id));
 
 add('GET', '/api/play/:token', false, (req, env, p) => play.getPlay(env, p.token, req));
 add('GET', '/api/play/:token/progress', false, (req, env, p) => play.getProgress(env, p.token, req));
 add('POST', '/api/play/:token/complete', false, (req, env, p) => play.completePlay(req, env, p.token));
+add('GET', '/api/preview/:token', false, (req, env, p) => play.getPreview(env, p.token, req));
+add('POST', '/api/preview/:token/complete', false, (req, env, p) => play.completePreview(req, env, p.token));
 
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
 add('GET', '/api/reports/class/:id', true, (_r, env, p, t) => reports.classReport(env, t, p.id));

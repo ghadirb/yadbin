@@ -71,6 +71,7 @@ import kotlinx.serialization.json.JsonElement
     val difficultyMode: String,
     val questionCount: Int,
     val status: String,
+    val publishState: String = "published",
     val title: String? = null,
     val lifecycle: String = "active",
     val lifecycleLabel: String = "",
@@ -105,6 +106,7 @@ import kotlinx.serialization.json.JsonElement
     val difficultyMode: String,
     val questionCount: Int,
     val status: String,
+    val publishState: String = "published",
     val createdAt: String? = null,
     val expiresAt: String? = null,
     val title: String? = null,
@@ -125,8 +127,12 @@ import kotlinx.serialization.json.JsonElement
     val ageMax: Int? = null,
     val templateId: String? = null,
     val hasSuitabilityRange: Boolean = false,
+    val previewedAt: String? = null,
+    val previewFeedback: String? = null,
+    val teacherApprovedAt: String? = null,
 )
 @Serializable data class ActivityLink(val studentId: String, val name: String, val token: String, val url: String)
+@Serializable data class PreviewStarted(val token: String, val url: String)
 @Serializable data class ActivityCreated(val activity: ActivityInfo, val links: List<ActivityLink> = emptyList(), val suitability: Suitability? = null)
 @Serializable data class ActivityStudent(
     val studentId: String,

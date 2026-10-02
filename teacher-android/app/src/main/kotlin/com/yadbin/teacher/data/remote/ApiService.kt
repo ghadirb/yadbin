@@ -85,6 +85,12 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun activity(id: String): ActivityDetail = c.request("GET", "/api/activities/$id", ActivityDetail.serializer())
     suspend fun cancelActivity(id: String) { c.request("POST", "/api/activities/$id/cancel", OkResponse.serializer()) }
+    suspend fun startPreview(id: String): PreviewStarted = c.request("POST", "/api/activities/$id/preview", PreviewStarted.serializer())
+    suspend fun previewFeedback(id: String, feedback: String): ActivityDetail {
+        val body = buildJsonObject { put("feedback", feedback) }.toString()
+        return c.request("POST", "/api/activities/$id/preview-feedback", ActivityDetail.serializer(), body)
+    }
+    suspend fun publishActivity(id: String): ActivityDetail = c.request("POST", "/api/activities/$id/publish", ActivityDetail.serializer())
 
     // ---- v1.2 ----
     /** Sends every profile field: null clears it, so the edit form is the single source of truth. */
@@ -115,6 +121,7 @@ class ApiService(private val c: ApiClient) {
     suspend fun createActivityV12(spec: ActivitySpec): ActivityCreated {
         val body = buildJsonObject {
             put("classId", spec.classId); put("gameType", spec.gameType); put("difficultyMode", spec.difficultyMode); put("questionCount", spec.questionCount)
+            put("requiresPreview", true)
             put("studentIds", if (spec.studentIds == null) JsonPrimitive("all") else JsonArray(spec.studentIds.map { JsonPrimitive(it) }))
             spec.title?.takeIf { it.isNotBlank() }?.let { put("title", it.trim()) }
             spec.description?.takeIf { it.isNotBlank() }?.let { put("description", it.trim()) }
