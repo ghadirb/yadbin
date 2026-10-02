@@ -235,8 +235,8 @@ describe('v1.2 step 3 — age/grade based game tuning', () => {
     const play = async (url: string) => (await t.api('GET', `/api/play/${url.split('/play/')[1]}`)).data;
     const young = await play(a1.links[0].url);
     const plain = await play(a2.links[0].url);
-    expect(young.pools['2'][0].displayDuration).toBe(1560);
-    expect(plain.pools['2'][0].displayDuration).toBe(1200); // v1.1 value
+    expect(young.pools['2'][0].displayDuration).toBe(1700); // generator v2, band -1
+    expect(plain.pools['2'][0].displayDuration).toBe(1300); // generator v2, band 0
     // teacher changes the student's grade mid-activity → resume returns the very same questions
     await t.api('PUT', `/api/students/${kid.id}`, { gradeCode: 'g9' }, token);
     const again = await play(a1.links[0].url);

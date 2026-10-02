@@ -15,3 +15,16 @@ export function tuningFor(i: TuningInput): Tuning {
   return Math.max(-1, Math.min(1, base + shift)) as Tuning;
 }
 export const tuningFromRow = (v: number | null | undefined): Tuning => (v === -1 || v === 1 ? v : 0);
+
+/** v1.2.x (gen_version 2): the band is centred on the REAL grade. Preschool–2 → -1, grades 3–8 → 0 (grade 6 included), 9+ → +1.
+ *  Age fallback: ≤7 → -1, 8–13 → 0, ≥14 → +1. The activity level still nudges the band by one step, but the level
+ *  can never turn a mid-primary class into the hardest band on its own (the +1 ranges are capped, see generate-v2.ts). */
+export function tuningForV2(i: TuningInput): Tuning {
+  let base = 0;
+  let g = i.gradeOrder ?? null;
+  if (g === null && i.gradeMin != null && i.gradeMax != null) g = Math.round((i.gradeMin + i.gradeMax) / 2);
+  if (g !== null) base = g <= 2 ? -1 : g >= 9 ? 1 : 0;
+  else if (i.age != null) base = i.age <= 7 ? -1 : i.age >= 14 ? 1 : 0;
+  const shift = i.level === 'introductory' ? -1 : i.level === 'advanced' ? 1 : 0;
+  return Math.max(-1, Math.min(1, base + shift)) as Tuning;
+}
