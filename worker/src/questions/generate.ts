@@ -2,6 +2,7 @@ import { makeRng, randInt, shuffle } from '../utils/rng';
 import type { GameType } from '../scoring/types';
 import { PROBLEM_BANK } from './bank';
 import { isValidProblem } from './validate';
+import { attentionQuestionsV2, memoryQuestionsV2, problemQuestionsV2 } from './generate-v2';
 
 export type DifficultyMode = 'adaptive' | 'easy' | 'medium' | 'hard';
 export const MODE_TO_LEVEL: Record<Exclude<DifficultyMode, 'adaptive'>, 1 | 2 | 3> = { easy: 1, medium: 2, hard: 3 };
@@ -100,13 +101,14 @@ export function problemQuestions(seed: string, difficulty: 1 | 2 | 3, count: num
  * Adaptive sends one pool per level (client falls back to the nearest level if a pool runs out).
  * Fixed levels send a single pool, borrowing nearby-level problems if the level has too few.
  */
-export function buildPools(game: GameType, seed: string, levels: (1 | 2 | 3)[], count: number, tuning: Tuning = 0) {
+export function buildPools(game: GameType, seed: string, levels: (1 | 2 | 3)[], count: number, tuning: Tuning = 0, genVersion = 1) {
   const pools: Record<string, unknown[]> = {};
   const borrow = levels.length === 1;
+  const v2 = genVersion >= 2; // v1 code paths above are kept untouched for sessions created before v1.2.x
   for (const l of levels) {
-    if (game === 'memory') pools[l] = memoryQuestions(seed, l, count, tuning);
-    else if (game === 'attention') pools[l] = attentionQuestions(seed, l, count, tuning);
-    else pools[l] = problemQuestions(seed, l, count, borrow, tuning);
+    if (game === 'memory') pools[l] = v2 ? memoryQuestionsV2(seed, l, count, tuning) : memoryQuestions(seed, l, count, tuning);
+    else if (game === 'attention') pools[l] = v2 ? attentionQuestionsV2(seed, l, count, tuning) : attentionQuestions(seed, l, count, tuning);
+    else pools[l] = v2 ? problemQuestionsV2(seed, l, count, borrow, tuning) : problemQuestions(seed, l, count, borrow, tuning);
   }
   return pools;
 }
