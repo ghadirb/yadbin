@@ -13,7 +13,31 @@ const tokenOf = (url: string) => url.split('/play/')[1];
 async function createActivity(gameType: string, studentIds: string[] | 'all', questionCount = 5) {
   const r = await api.post('/api/activities', { headers: auth(), data: { classId, gameType, difficultyMode: 'adaptive', questionCount, studentIds } });
   expect(r.status()).toBe(201);
-  return (await r.json()) as { activity: { id: string }; links: { studentId: string; url: string }[] };
+  const created = (await r.json()) as { activity: { id: string }; links: { studentId: string; url: string }[] };
+  await previewAndPublish(created.activity.id);
+  return created;
+}
+
+/** The browser journey uses the same teacher gate as production before handing a link to a child. */
+async function previewAndPublish(activityId: string) {
+  const started = await api.post(`/api/activities/${activityId}/preview`, { headers: auth() });
+  expect(started.status()).toBe(200);
+  const previewToken = ((await started.json()) as { url: string }).url.split('/preview/')[1];
+  const previewResponse = await api.get(`/api/preview/${previewToken}`);
+  expect(previewResponse.status()).toBe(200);
+  const preview = await previewResponse.json() as any;
+  const questions = preview.pools[String(preview.startDifficulty)] as any[];
+  const events = preview.game === 'memory'
+    ? questions.map((q) => ({ sequenceLength: q.sequence.length, displayDuration: q.displayDuration, difficulty: q.difficulty, isReverse: q.isReverse, correct: true, attempts: 1, responseTime: 1200, mistakes: 0 }))
+    : preview.game === 'attention'
+      ? questions.map((q) => ({ gridSize: q.gridSize, targetType: q.rule.select, targetCount: q.targetCount, correctTargets: q.targetCount, wrongTargets: 0, missedTargets: 0, falseClicks: 0, reactionTime: 1200, totalTime: 3000, difficulty: q.difficulty, ruleChanged: q.ruleChanged, phase: q.phase }))
+      : questions.map((q) => ({ questionId: q.id, attempts: 1, hintsUsed: 0, responseTime: 1200, finalAnswer: q.correctOption }));
+  const completed = await api.post(`/api/preview/${previewToken}/complete`, { data: { sessionId: preview.session.id, events } });
+  expect(completed.status()).toBe(200);
+  const feedback = await api.post(`/api/activities/${activityId}/preview-feedback`, { headers: auth(), data: { feedback: 'suitable' } });
+  expect(feedback.status()).toBe(200);
+  const published = await api.post(`/api/activities/${activityId}/publish`, { headers: auth() });
+  expect(published.status()).toBe(200);
 }
 async function report(studentId: string) {
   const r = await api.get(`/api/reports/student/${studentId}`, { headers: auth() });
