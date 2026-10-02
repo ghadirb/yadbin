@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 
 package com.yadbin.teacher.ui.activities
 
@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -115,14 +116,20 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
                     val a = s.data.activity
-                    Column(Modifier.padding(16.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                    item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(a.title ?: Labels.game(a.gameType), style = MaterialTheme.typography.titleMedium)
                         Text("${Labels.game(a.gameType)} • ${Labels.difficulty(a.difficultyMode)} • ${a.questionCount.fa()} سؤال • ${a.lifecycleLabel.ifBlank { Labels.activityStatus(a.status) }}", style = MaterialTheme.typography.bodySmall)
                         a.description?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                         Text(listOfNotNull(a.createdAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { "ساخته‌شده: $it" }, a.expiresAt.jalaliDateTimeFa().takeIf { it.isNotBlank() }?.let { "انقضا: $it" }).joinToString(" • "), style = MaterialTheme.typography.bodySmall)
                         a.suggestedMinutes?.let { Text("زمان پیشنهادی: ${it.fa()} دقیقه", style = MaterialTheme.typography.bodySmall) }
                         InfoChips(listOfNotNull(a.levelLabel, com.yadbin.teacher.core.utils.Edu.gradeRange(a.gradeMinLabel, a.gradeMaxLabel), com.yadbin.teacher.core.utils.Edu.ageRange(a.ageMin, a.ageMax)) + a.skillLabels)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             if (a.publishState != "published" && a.lifecycle != "archived") TextButton(onClick = { showPreviewSummary = true }) { Text("آزمایش فعالیت") }
                             if (a.publishState == "testing") TextButton(onClick = { showFeedback = true }) { Text("ثبت نتیجه آزمایش") }
                             if (a.publishState == "ready_to_publish") TextButton(onClick = vm::publish) { Text("تأیید و انتشار") }
@@ -133,7 +140,7 @@ fun ActivityScreen(activityId: String, onBack: () -> Unit, onOpenStudent: (Strin
                         Text("هر دانش‌آموز لینک اختصاصی خودش را دارد؛ لینک را فقط برای همان دانش‌آموز بفرستید.", style = MaterialTheme.typography.bodySmall)
                         if (a.status == "active") TextButton(onClick = { confirmCancel = true }) { Text("لغو فعالیت", color = MaterialTheme.colorScheme.error) }
                     }
-                    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    }
                         items(s.data.students, key = { it.studentId }) { st ->
                             Card(Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(12.dp)) {
