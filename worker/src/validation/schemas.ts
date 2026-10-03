@@ -80,7 +80,8 @@ export const activitySchema = z.object({
   level: z.enum(LEVEL_CODES, { error: 'سطح فعالیت معتبر نیست.' }).nullable().optional(),
   skills: z.array(z.enum(SKILL_CODES, { error: 'مهارت معتبر نیست.' })).max(5, 'حداکثر ۵ مهارت').nullable().optional(),
   templateId: z.string().max(40).nullable().optional(),
-  // Accepted only for forward-compatible clients. New activities always require preview.
+  /** Default (omitted/true): the activity starts as a draft and students cannot open it until the teacher publishes it.
+   *  false: published immediately (no preview step) — for clients/flows that deliberately skip the teacher workflow. */
   requiresPreview: z.boolean().optional(),
 }).superRefine(rangeCheck).superRefine(gradeRangeCheck);
 export const activityUpdateSchema = z.object({
@@ -99,7 +100,11 @@ export const activityUpdateSchema = z.object({
 export const duplicateSchema = z.object({
   title: z.string().trim().max(80).optional().nullable(),
   studentIds: z.union([z.literal('all'), z.array(z.string().uuid()).min(1)]).default('all'),
+  requiresPreview: z.boolean().optional(),
 });
+export const previewStartSchema = z.object({ compareMode: z.enum(['easy', 'medium', 'hard']).optional() });
+export const previewFeedbackSchema = z.object({ feedback: z.enum(['suitable', 'too_easy', 'too_hard', 'needs_edit'], { error: 'بازخورد معتبر نیست.' }) });
+export const publishSchema = z.object({ withoutPreview: z.boolean().optional() });
 export const regenerateSchema = z.object({ studentId: z.string().uuid().optional() });
 
 const num = (max = 10 * 60 * 1000) => z.number().finite().min(0).max(max);

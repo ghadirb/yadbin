@@ -115,7 +115,7 @@ export async function studentHistory(db: D1Database, studentId: string) {
             r.accuracy, r.difficulty_reached, r.sample_count, json_extract(r.raw_result_json, '$.meta.durationMs') AS duration_ms
        FROM activity_students ast JOIN activities a ON a.id = ast.activity_id
        LEFT JOIN game_sessions gs ON gs.activity_student_id = ast.id LEFT JOIN game_results r ON r.session_id = gs.id
-      WHERE ast.student_id = ? ORDER BY COALESCE(ast.completed_at, ast.started_at, a.created_at) DESC LIMIT 100`,
+      WHERE ast.student_id = ? AND a.publish_state = 'published' ORDER BY COALESCE(ast.completed_at, ast.started_at, a.created_at) DESC LIMIT 100`,
   ).bind(studentId).all<any>();
   return results.map((h) => ({
     activityId: h.activity_id, title: h.title || GAME_NAMES[h.game_type as GameType] || h.game_type, gameType: h.game_type, gameName: GAME_NAMES[h.game_type as GameType],

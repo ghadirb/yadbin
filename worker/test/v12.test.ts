@@ -235,8 +235,8 @@ describe('v1.2 step 3 — age/grade based game tuning', () => {
     const play = async (url: string) => (await t.api('GET', `/api/play/${url.split('/play/')[1]}`)).data;
     const young = await play(a1.links[0].url);
     const plain = await play(a2.links[0].url);
-    expect(young.pools['2'][0].displayDuration).toBe(1560);
-    expect(plain.pools['2'][0].displayDuration).toBe(1200); // v1.1 value
+    expect(young.pools['2'][0].displayDuration).toBe(1700); // generator v2, band -1
+    expect(plain.pools['2'][0].displayDuration).toBe(1300); // generator v2, band 0
     // teacher changes the student's grade mid-activity → resume returns the very same questions
     await t.api('PUT', `/api/students/${kid.id}`, { gradeCode: 'g9' }, token);
     const again = await play(a1.links[0].url);
@@ -505,7 +505,7 @@ describe('v1.2 class dashboard', () => {
     await t.api('POST', '/api/students', { name: 'دانش‌آموز سه', classId: c2.id }, a.token);
     await runActivity(a.token, c4.id, s1.id, 'memory', memoryEvents(5, 5), { title: 'حافظه الف', level: 'basic', skills: ['memory'] });
     await runActivity(a.token, c4.id, s1.id, 'memory', memoryEvents(5, 5), { title: 'حافظه ب', level: 'basic', skills: ['memory'] });
-    await t.api('POST', '/api/activities', { classId: c2.id, gameType: 'attention', title: 'توجه دوم', level: 'introductory', skills: ['attention'] }, a.token);
+    await t.api('POST', '/api/activities', { classId: c2.id, gameType: 'attention', title: 'توجه دوم', level: 'introductory', skills: ['attention'], requiresPreview: false }, a.token);
     const d = (q = '') => t.api('GET', `/api/v1/dashboard${q}`, undefined, a.token).then((r) => r.data);
     const all = await d();
     expect(all.classes).toHaveLength(2); expect(all.totals.activities).toBe(3);

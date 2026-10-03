@@ -132,58 +132,6 @@ describe('Teacher activity preview', () => {
     expect(published.data.activity).toMatchObject({ publishState: 'published', lifecycle: 'active' });
     expect((await t.api('GET', `/api/play/${studentToken}`)).status).toBe(200);
   });
-
-  it('stores every feedback choice, and only suitable feedback can lead to publishing', async () => {
-    const { token } = await registerTeacher(t);
-    const { classId } = await setupClass(token, 1);
-    for (const feedback of ['too_easy', 'too_hard', 'needs_edit'] as const) {
-      const created = await t.api('POST', '/api/activities', { classId, gameType: 'memory', questionCount: 5 }, token);
-      const id = created.data.activity.id;
-      const started = await t.api('POST', `/api/activities/${id}/preview`, undefined, token);
-      const preview = await t.api('GET', `/api/preview/${started.data.url.split('/preview/')[1]}`);
-      await t.api('POST', `/api/preview/${started.data.url.split('/preview/')[1]}/complete`, { sessionId: preview.data.session.id, events: memoryEvents(5, 4, 1) });
-      const saved = await t.api('POST', `/api/activities/${id}/preview-feedback`, { feedback }, token);
-      expect(saved.data.activity).toMatchObject({ publishState: 'draft', previewFeedback: feedback, teacherApprovedAt: null });
-      expect((await t.api('POST', `/api/activities/${id}/publish`, undefined, token)).status).toBe(409);
-    }
-  });
-
-  it('uses the student tuning fallback for grade-6 previews and invalidates approval after an effective edit', async () => {
-    const { token } = await registerTeacher(t);
-    const { classId } = await setupClass(token, 1);
-    const created = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'medium', questionCount: 10, gradeMin: 'g6', gradeMax: 'g6' }, token);
-    const id = created.data.activity.id;
-    const studentToken = tokenOf(created.data.links[0].url);
-    const started = await t.api('POST', `/api/activities/${id}/preview`, undefined, token);
-    const previewToken = started.data.url.split('/preview/')[1];
-    const preview = await t.api('GET', `/api/preview/${previewToken}`);
-    expect(preview.data.pools['2']).toHaveLength(10);
-    expect(preview.data.pools['2'][0].displayDuration).toBe(1020); // grade 6 => tuning +1
-    expect(preview.data.pools).toEqual(buildPools('memory', preview.data.session.id, [2], 10, 1));
-    await t.api('POST', `/api/preview/${previewToken}/complete`, { sessionId: preview.data.session.id, events: memoryEvents(10, 8, 2) });
-    await t.api('POST', `/api/activities/${id}/preview-feedback`, { feedback: 'suitable' }, token);
-    await t.api('POST', `/api/activities/${id}/publish`, undefined, token);
-
-    const edited = await t.api('PUT', `/api/activities/${id}`, { difficultyMode: 'easy' }, token);
-    expect(edited.data.activity).toMatchObject({ publishState: 'draft', previewedAt: null, previewFeedback: null, teacherApprovedAt: null });
-    expect((await t.api('GET', `/api/play/${studentToken}`)).status).toBe(403);
-  });
-
-  it('creates independently seeded previews while preserving each preview’s generator parameters', async () => {
-    const { token } = await registerTeacher(t);
-    const { classId } = await setupClass(token, 1);
-    const created = await t.api('POST', '/api/activities', { classId, gameType: 'memory', difficultyMode: 'hard', questionCount: 5, gradeMin: 'g6', gradeMax: 'g6' }, token);
-    const id = created.data.activity.id;
-    const previews = [] as any[];
-    for (let index = 0; index < 2; index++) {
-      const started = await t.api('POST', `/api/activities/${id}/preview`, undefined, token);
-      previews.push((await t.api('GET', `/api/preview/${started.data.url.split('/preview/')[1]}`)).data);
-    }
-    expect(previews[0].session.id).not.toBe(previews[1].session.id);
-    expect(previews[0].pools).toEqual(buildPools('memory', previews[0].session.id, [3], 5, 1));
-    expect(previews[1].pools).toEqual(buildPools('memory', previews[1].session.id, [3], 5, 1));
-    expect(JSON.stringify(previews[0].pools)).not.toBe(JSON.stringify(previews[1].pools));
-  });
 });
 
 describe('Password recovery', () => {

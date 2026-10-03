@@ -73,9 +73,10 @@ class Repository(
     suspend fun duplicateActivity(id: String): ActivityCreated = api.duplicateActivity(id)
     suspend fun setActivityArchived(id: String, archived: Boolean): ActivityDetail = api.setActivityArchived(id, archived)
     suspend fun regenerateLink(activityId: String, studentId: String): LinksResponse = api.regenerateLink(activityId, studentId)
-    suspend fun startPreview(id: String) = api.startPreview(id)
+    suspend fun startPreview(id: String, compareMode: String? = null) = api.startPreview(id, compareMode)
+    suspend fun updateActivityFull(id: String, edit: ActivityEdit): ActivityDetail = api.updateActivityFull(id, edit)
     suspend fun previewFeedback(id: String, feedback: String) = api.previewFeedback(id, feedback)
-    suspend fun publishActivity(id: String) = api.publishActivity(id)
+    suspend fun publishActivity(id: String, withoutPreview: Boolean = false) = api.publishActivity(id, withoutPreview)
 
     // ---- v1.2 ----
     suspend fun studentProfile(id: String): Loaded<EducationalProfile> = cached("profile:$id", EducationalProfile.serializer()) { api.studentProfile(id) }

@@ -34,7 +34,8 @@ export async function dashboard(req: Request, env: Env, teacherId: string) {
     const status: PerformanceStatus = a.wn && a.wn >= MIN_SAMPLES ? performanceStatus(a.wsum / a.wn, a.wn) : 'insufficient';
     return { ...activityDto(a, a.assigned_n, a.completed_n), className: a.class_name, performanceStatus: status, performanceLabel: SHORT_STATUS_FA[status] };
   });
-  const activities = applyActivityFilters(withPerf, sp, sp.get('lifecycle') ?? 'open').filter((a) => !perfF || a.performanceStatus === perfF);
+  const published = withPerf.filter((a) => a.publishState === 'published'); // drafts / activities being tested never count as assigned work
+  const activities = applyActivityFilters(published, sp, sp.get('lifecycle') ?? 'open').filter((a) => !perfF || a.performanceStatus === perfF);
 
   const classes = cls.map((c) => {
     const n = nStudents.get(c.id) ?? 0;
@@ -54,7 +55,7 @@ export async function dashboard(req: Request, env: Env, teacherId: string) {
   });
   return json({
     classes, activities,
-    totals: { classes: classes.length, activities: activities.length, assigned: activities.reduce((t, a) => t + a.assigned, 0), completed: activities.reduce((t, a) => t + a.completed, 0) },
+    totals: { classes: classes.length, drafts: withPerf.length - published.length, activities: activities.length, assigned: activities.reduce((t, a) => t + a.assigned, 0), completed: activities.reduce((t, a) => t + a.completed, 0) },
     filters: { grade: sp.get('grade'), skill: sp.get('skill'), level: sp.get('level'), gameType: sp.get('gameType'), completion: sp.get('completion'), performance: perfF, classId: classF },
     notice: 'فقط شمارش و توزیع کلی نمایش داده می‌شود؛ دانش‌آموزان با یکدیگر مقایسه یا رتبه‌بندی نمی‌شوند.',
   });

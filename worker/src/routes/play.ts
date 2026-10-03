@@ -2,7 +2,9 @@ import type { Env } from '../env';
 import { buildPools, MODE_TO_LEVEL, type DifficultyMode } from '../questions/generate';
 import { PROBLEM_BY_ID } from '../questions/bank';
 import { computeAge, gradeByOrder, inferGradeOrder } from '../education/catalog';
-import { tuningFor, tuningFromRow } from '../education/tuning';
+import { tuningFor, tuningForV2, tuningFromRow } from '../education/tuning';
+import { GEN_VERSION } from '../questions/generate-v2';
+import { previewSummary, PREVIEW_TTL_MS } from '../services/preview';
 import { recomputeStudentMetrics } from '../services/metrics';
 import { scoreAttention, scoreMemory, scoreProblemSolving, type GameMetrics, type GameType } from '../scoring';
 import { HttpError, json, readJson } from '../utils/http';
@@ -37,7 +39,7 @@ async function loadByToken(env: Env, token: string): Promise<PlayRow> {
 }
 
 /** Student grade (own → class) and age + the activity's level/range → tuning band. Missing data → 0 (identical to v1.1). */
-async function computeTuning(env: Env, row: PlayRow) {
+async function computeTuning(env: Env, row: PlayRow, genVersion = 1) {
   const r = await env.DB.prepare(
     `SELECT s.*, a.activity_level AS lvl, a.grade_min AS gmin, a.grade_max AS gmax,
             (SELECT c.grade_order FROM class_students cs JOIN classes c ON c.id = cs.class_id WHERE cs.student_id = s.id AND cs.removed_at IS NULL ORDER BY cs.added_at DESC LIMIT 1) AS class_order
@@ -45,7 +47,7 @@ async function computeTuning(env: Env, row: PlayRow) {
   ).bind(row.ast_id).first<any>();
   if (!r) return 0;
   const gradeOrder = r.grade_order ?? inferGradeOrder(r.grade) ?? r.class_order ?? null;
-  return tuningFor({ gradeOrder: gradeByOrder(gradeOrder) ? gradeOrder : null, age: computeAge(r).age, level: r.lvl, gradeMin: r.gmin, gradeMax: r.gmax });
+  return (genVersion >= 2 ? tuningForV2 : tuningFor)({ gradeOrder: gradeByOrder(gradeOrder) ? gradeOrder : null, age: computeAge(r).age, level: r.lvl, gradeMin: r.gmin, gradeMax: r.gmax });
 }
 
 function levelsFor(mode: DifficultyMode): (1 | 2 | 3)[] {
@@ -78,13 +80,13 @@ export async function getPlay(env: Env, token: string, req?: Request) {
   const now = nowIso();
   // v1.2: difficulty tuning from the student's grade/age + the activity level, computed ONCE when the session is created.
   const existing = await env.DB.prepare('SELECT id FROM game_sessions WHERE activity_student_id = ?').bind(row.ast_id).first();
-  const tuning = existing ? 0 : await computeTuning(env, row);
+  const tuning = existing ? 0 : await computeTuning(env, row, GEN_VERSION);
   await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO game_sessions (id, activity_student_id, game_type, started_at, status, tuning) VALUES (?,?,?,?,?,?)')
-      .bind(newId(), row.ast_id, row.game_type, now, 'started', tuning),
+    env.DB.prepare('INSERT OR IGNORE INTO game_sessions (id, activity_student_id, game_type, started_at, status, tuning, gen_version) VALUES (?,?,?,?,?,?,?)')
+      .bind(newId(), row.ast_id, row.game_type, now, 'started', tuning, GEN_VERSION),
     env.DB.prepare("UPDATE activity_students SET status = 'started', started_at = ? WHERE id = ? AND status = 'pending'").bind(now, row.ast_id),
   ]);
-  const session = await env.DB.prepare('SELECT id, started_at, tuning FROM game_sessions WHERE activity_student_id = ?').bind(row.ast_id).first<{ id: string; started_at: string; tuning: number | null }>();
+  const session = await env.DB.prepare('SELECT id, started_at, tuning, gen_version FROM game_sessions WHERE activity_student_id = ?').bind(row.ast_id).first<{ id: string; started_at: string; tuning: number | null; gen_version: number | null }>();
   if (!session) throw new HttpError(500, 'session_error', 'خطا در شروع جلسه.');
 
   const seed = session.id; // deterministic pools => resume gives the same questions
@@ -96,13 +98,13 @@ export async function getPlay(env: Env, token: string, req?: Request) {
     questionCount: row.question_count,
     startDifficulty: await startDifficulty(env, row),
     seed,
-    pools: buildPools(row.game_type, seed, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(session.tuning)),
+    pools: buildPools(row.game_type, seed, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(session.tuning), session.gen_version ?? 1),
     version: 1,
   });
 }
 
 interface PreviewRow {
-  id: string; activity_id: string; teacher_id: string; token: string; status: string; started_at: string; tuning: number;
+  id: string; activity_id: string; teacher_id: string; token: string; status: string; started_at: string; tuning: number; gen_version: number | null; compare_mode: DifficultyMode | null;
   game_type: GameType; difficulty_mode: DifficultyMode; question_count: number;
 }
 async function loadPreview(env: Env, token: string): Promise<PreviewRow> {
@@ -110,21 +112,27 @@ async function loadPreview(env: Env, token: string): Promise<PreviewRow> {
   const row = await env.DB.prepare(`SELECT p.*, a.game_type, a.difficulty_mode, a.question_count
     FROM teacher_preview_sessions p JOIN activities a ON a.id = p.activity_id WHERE p.token = ?`).bind(token).first<PreviewRow>();
   if (!row) throw INVALID();
+  if (Date.parse(row.started_at) + PREVIEW_TTL_MS < Date.now()) throw new HttpError(410, 'expired', 'این لینک آزمایش منقضی شده است. دوباره «آزمایش فعالیت» را بزنید.');
   return row;
 }
+/** A comparison run plays another difficulty mode; otherwise the activity's own. */
+const previewMode = (row: PreviewRow): DifficultyMode => row.compare_mode ?? row.difficulty_mode;
 
-/** Uses the production question generator without creating a student session or result. */
+/** Uses the production question generator (same version, same band a student of the class gets) without creating a student session or result. */
 export async function getPreview(env: Env, token: string, req?: Request) {
   if (req) await rateLimitIp(env, req, 'preview', 120, 60);
   const row = await loadPreview(env, token);
   await rateLimit(env, `preview:token:${token}`, 120, 3600);
-  if (row.status === 'completed') return json({ status: 'completed', message: 'آزمایش قبلاً انجام شده است.' });
+  if (row.status === 'completed') return json({ status: 'completed', message: 'آزمایش قبلاً انجام شده است.', comparison: !!row.compare_mode });
+  const mode = previewMode(row);
+  const act = await env.DB.prepare('SELECT a.*, c.grade AS c_grade, c.grade_order AS c_order FROM activities a JOIN classes c ON c.id = a.class_id WHERE a.id = ?').bind(row.activity_id).first<any>();
   return json({
     status: 'ready', session: { id: row.id, startedAt: row.started_at }, game: row.game_type,
-    difficultyMode: row.difficulty_mode, questionCount: row.question_count,
-    startDifficulty: row.difficulty_mode === 'adaptive' ? 1 : MODE_TO_LEVEL[row.difficulty_mode], seed: row.id,
-    pools: buildPools(row.game_type, row.id, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(row.tuning)),
-    version: 1, preview: true,
+    difficultyMode: mode, questionCount: row.question_count,
+    startDifficulty: mode === 'adaptive' ? 1 : MODE_TO_LEVEL[mode], seed: row.id,
+    pools: buildPools(row.game_type, row.id, levelsFor(mode), row.question_count, tuningFromRow(row.tuning), row.gen_version ?? 1),
+    version: 1, preview: true, comparison: !!row.compare_mode,
+    summary: act ? previewSummary(act, { grade: act.c_grade, grade_order: act.c_order }, row.compare_mode) : null,
   });
 }
 
@@ -132,14 +140,14 @@ export async function completePreview(req: Request, env: Env, token: string) {
   const row = await loadPreview(env, token);
   const body = parse(completeSchema, await readJson(req));
   if (body.sessionId !== row.id) throw new HttpError(404, 'invalid_session', 'جلسه معتبر نیست.');
-  if (row.status === 'completed') return json({ ok: true, duplicate: true });
-  const { metrics } = scoreEvents(row.game_type, body.events, row.id, row.difficulty_mode, row.question_count, row.tuning);
+  if (row.status === 'completed') return json({ ok: true, duplicate: true, comparison: !!row.compare_mode });
+  const { metrics } = scoreEvents(row.game_type, body.events, row.id, previewMode(row), row.question_count, row.tuning, row.gen_version ?? 1);
   if (metrics.sampleCount < 1) throw new HttpError(422, 'no_valid_events', 'نتیجه معتبر نیست.');
   await env.DB.prepare("UPDATE teacher_preview_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'started'").bind(nowIso(), row.id).run();
-  return json({ ok: true, duplicate: false, preview: true, feedback: childFeedback(metrics.accuracy) });
+  return json({ ok: true, duplicate: false, preview: true, comparison: !!row.compare_mode, feedback: childFeedback(metrics.accuracy) });
 }
 
-function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: DifficultyMode, count: number, tuning = 0): { metrics: GameMetrics; events: unknown[]; ignored: number } {
+function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: DifficultyMode, count: number, tuning = 0, genVersion = 1): { metrics: GameMetrics; events: unknown[]; ignored: number } {
   const ok: any[] = [];
   if (game === 'memory' || game === 'attention') {
     const schema = game === 'memory' ? memoryEventSchema : attentionEventSchema;
@@ -148,7 +156,7 @@ function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: D
   }
   // Problem solving: correctness is derived on the server from this session's own (seeded, shuffled) pools.
   const truth = new Map<string, { correctOption: number; difficulty: number }>();
-  const pools = buildPools('problem_solving', seed, levelsFor(mode), count, tuningFromRow(tuning)) as Record<string, any[]>;
+  const pools = buildPools('problem_solving', seed, levelsFor(mode), count, tuningFromRow(tuning), genVersion) as Record<string, any[]>;
   for (const list of Object.values(pools)) for (const q of list) truth.set(q.id, { correctOption: q.correctOption, difficulty: q.difficulty });
   const seen = new Set<string>();
   for (const e of rawEvents) {
@@ -170,13 +178,13 @@ export async function completePlay(req: Request, env: Env, token: string) {
   if (row.act_status === 'canceled') throw INACTIVE();
   const body = parse(completeSchema, await readJson(req));
 
-  const session = await env.DB.prepare('SELECT id, status, tuning FROM game_sessions WHERE id = ? AND activity_student_id = ?').bind(body.sessionId, row.ast_id).first<{ id: string; status: string; tuning: number | null }>();
+  const session = await env.DB.prepare('SELECT id, status, tuning, gen_version FROM game_sessions WHERE id = ? AND activity_student_id = ?').bind(body.sessionId, row.ast_id).first<{ id: string; status: string; tuning: number | null; gen_version: number | null }>();
   if (!session) throw new HttpError(404, 'invalid_session', 'جلسه معتبر نیست.');
   const doneMsg = { ok: true, duplicate: true, message: 'این فعالیت قبلاً انجام شده است.' };
   if (session.status === 'completed') return json(doneMsg);
   // A session that started before expiry may still finish/sync afterwards (offline play) — the data must not be lost.
 
-  const { metrics, events, ignored } = scoreEvents(row.game_type, body.events, session.id, row.difficulty_mode, row.question_count, session.tuning ?? 0);
+  const { metrics, events, ignored } = scoreEvents(row.game_type, body.events, session.id, row.difficulty_mode, row.question_count, session.tuning ?? 0, session.gen_version ?? 1);
   if (metrics.sampleCount < 1) throw new HttpError(422, 'no_valid_events', 'نتیجه معتبر نیست.');
 
   const prev = await env.DB.prepare(

@@ -134,7 +134,13 @@ import kotlinx.serialization.json.JsonElement
     val teacherApprovedAt: String? = null,
 )
 @Serializable data class ActivityLink(val studentId: String, val name: String, val token: String, val url: String)
-@Serializable data class PreviewStarted(val token: String, val url: String)
+@Serializable data class PreviewStarted(val token: String, val url: String, val comparison: Boolean = false)
+/** Every editable setting of an activity (the full edit screen sends all of them; null clears the optional ones). */
+data class ActivityEdit(
+    val title: String, val description: String, val suggestedMinutes: Int?,
+    val difficultyMode: String, val questionCount: Int, val level: String?, val skills: List<String>,
+    val gradeMin: String?, val gradeMax: String?, val ageMin: Int?, val ageMax: Int?,
+)
 @Serializable data class ActivityCreated(val activity: ActivityInfo, val links: List<ActivityLink> = emptyList(), val suitability: Suitability? = null)
 @Serializable data class ActivityStudent(
     val studentId: String,

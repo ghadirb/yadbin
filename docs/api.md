@@ -40,6 +40,12 @@
 | GET `/api/activities?classId=&lifecycle=open\|active\|ended\|archived\|all` | لیست فعالیت‌ها |
 | PUT `/api/activities/:id` | ویرایش `title, description, suggestedMinutes, expiresInDays` همیشه؛ `difficultyMode, questionCount` فقط پیش از شروع اولین دانش‌آموز (وگرنه `409 activity_in_progress`) |
 | POST `/api/activities/:id/duplicate` | «ساخت نسخه جدید»: عنوان «… - تمرین دوم/سوم»، لینک‌های تازه، نتایج قبلی دست‌نخورده |
+| POST `/api/activities/:id/preview` | «آزمایش فعالیت»: `{compareMode?: easy\|medium\|hard}` → `{token, url, summary, comparison}`؛ جلسهٔ جدا از دانش‌آموز، ۲۴ ساعت اعتبار |
+| GET `/api/preview/:token` | بستهٔ بازی آزمایش (همان مولد و باند دانش‌آموزان کلاس) + `summary`؛ بدون احراز هویت معلم، بدون ثبت داده |
+| POST `/api/preview/:token/complete` | `{sessionId, events}` پایان آزمایش؛ هیچ نتیجه‌ای ذخیره یا شمرده نمی‌شود |
+| POST `/api/activities/:id/preview-feedback` | `{feedback: suitable\|too_easy\|too_hard\|needs_edit}` فقط پس از آزمایش کامل (غیرمقایسه‌ای) تنظیمات فعلی |
+| POST `/api/activities/:id/publish` | انتشار؛ `{withoutPreview: true}` = انتشار آگاهانه بدون آزمایش؛ وگرنه `409 teacher_approval_required` |
+| PUT `/api/activities/:id` | همهٔ تنظیمات: `title, description, suggestedMinutes, difficultyMode, questionCount, level, skills, gradeMin/Max, ageMin/Max, expiresInDays` |
 | POST `/api/activities/:id/archive` · `/unarchive` | آرشیو فعالیت |
 | POST `/api/activities/:id/regenerate-links` | `{studentId?}` لینک جدید برای کسانی که تمام نکرده‌اند؛ لینک قبلی بلافاصله باطل، جلسه‌ی شروع‌شده حفظ |
 | GET `/api/reports/class/:id` | `activeStudents` (۳۰ روز اخیر)، `averagePerformance`، `byGame[]`، `weekly[]` (۶ هفته برای نمودار). بدون مقایسه‌ی دانش‌آموزان با هم |

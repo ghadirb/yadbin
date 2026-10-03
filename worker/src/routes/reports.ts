@@ -30,7 +30,7 @@ export async function classReport(env: Env, teacherId: string, id: string) {
     `SELECT a.game_type AS game, COUNT(DISTINCT a.id) AS activities, COUNT(ast.id) AS assigned,
             SUM(CASE WHEN ast.status = 'completed' THEN 1 ELSE 0 END) AS completed
      FROM activities a LEFT JOIN activity_students ast ON ast.activity_id = a.id
-     WHERE a.class_id = ? GROUP BY a.game_type`,
+     WHERE a.class_id = ? AND a.publish_state = 'published' GROUP BY a.game_type`,
   ).bind(id).all<any>();
   const res = await env.DB.prepare(
     `SELECT a.game_type AS game, r.accuracy, r.sample_count, r.created_at
