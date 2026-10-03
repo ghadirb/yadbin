@@ -57,7 +57,7 @@ class DashboardViewModel(private val repo: Repository) : ViewModel() {
 }
 
 @Composable
-fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit, onOverview: () -> Unit = {}) {
+fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit, onOverview: () -> Unit = {}, onAssessments: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -76,6 +76,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
     Scaffold(
         topBar = {
             YadbinTopBar("داشبورد", actions = {
+                TextButton(onClick = onAssessments) { Text("آزمون‌های من") }
                 TextButton(onClick = onOverview) { Text("نمای کلی") }
                 TextButton(onClick = { vm.logout(onLoggedOut) }) { Text("خروج") }
             })

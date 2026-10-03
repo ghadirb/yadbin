@@ -122,6 +122,7 @@ private fun ReportContent(
 
         OverallTrendCard(history)
         RecentActivities(history)
+        com.yadbin.teacher.ui.assessments.StudentAssessmentsSection(r.student.id) // separate from the cognitive indicators
 
         if (recs != null && recs.recommendations.isNotEmpty()) {
             Text("پیشنهاد فعالیت بعدی", style = MaterialTheme.typography.titleMedium)

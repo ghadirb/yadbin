@@ -88,6 +88,28 @@ class Repository(
     suspend fun aiDraft(prompt: String, classId: String?, studentId: String?): DraftResponse = api.aiDraft(prompt, classId, studentId)
     suspend fun createActivityFromSpec(spec: ActivitySpec): ActivityCreated = api.createActivityV12(spec)
 
+    // ---- Teacher Assessments ----
+    suspend fun assessments(status: String = "all"): Loaded<AssessmentList> = cached("assessments:$status", AssessmentList.serializer()) { api.assessments(status) }
+    suspend fun assessment(id: String): Loaded<AssessmentDetail> = cached("assessment:$id", AssessmentDetail.serializer()) { api.assessment(id) }
+    suspend fun assessmentReport(id: String): Loaded<AssessmentReport> = cached("assessmentReport:$id", AssessmentReport.serializer()) { api.assessmentReport(id) }
+    suspend fun studentAssessments(studentId: String): Loaded<StudentAssessments> = cached("studentAssessments:$studentId", StudentAssessments.serializer()) { api.studentAssessments(studentId) }
+    suspend fun createAssessment(title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?) = api.createAssessment(title, subject, gradeCode, level, description, minutes)
+    suspend fun updateAssessment(id: String, title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?) = api.updateAssessment(id, title, subject, gradeCode, level, description, minutes)
+    suspend fun addAssessmentQuestion(id: String, q: QuestionDraft) = api.addAssessmentQuestion(id, q)
+    suspend fun updateAssessmentQuestion(id: String, qid: String, q: QuestionDraft) = api.updateAssessmentQuestion(id, qid, q)
+    suspend fun deleteAssessmentQuestion(id: String, qid: String) = api.deleteAssessmentQuestion(id, qid)
+    suspend fun duplicateAssessmentQuestion(id: String, qid: String) = api.duplicateAssessmentQuestion(id, qid)
+    suspend fun reorderAssessment(id: String, order: List<String>) = api.reorderAssessment(id, order)
+    suspend fun startAssessmentPreview(id: String) = api.startAssessmentPreview(id)
+    suspend fun assessmentPreviewFeedback(id: String, feedback: String) = api.assessmentPreviewFeedback(id, feedback)
+    suspend fun publishAssessment(id: String, classId: String?) = api.publishAssessment(id, classId)
+    suspend fun assignAssessment(id: String, classId: String) = api.assignAssessment(id, classId)
+    suspend fun duplicateAssessment(id: String) = api.duplicateAssessment(id)
+    suspend fun newAssessmentVersion(id: String) = api.newAssessmentVersion(id)
+    suspend fun setAssessmentArchived(id: String, archived: Boolean) = api.setAssessmentArchived(id, archived)
+    suspend fun deleteAssessment(id: String) = api.deleteAssessment(id)
+    suspend fun aiAssessmentDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int) = api.aiAssessmentDraft(prompt, subject, gradeCode, level, count)
+
     private suspend fun <T> cached(key: String, serializer: KSerializer<T>, fetch: suspend () -> T): Loaded<T> {
         try {
             val fresh = fetch()

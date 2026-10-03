@@ -14,6 +14,8 @@ import com.yadbin.teacher.ui.activities.ActivityScreen
 import com.yadbin.teacher.ui.activities.AiBuilderScreen
 import com.yadbin.teacher.ui.activities.CreateActivityScreen
 import com.yadbin.teacher.ui.dashboard.OverviewScreen
+import com.yadbin.teacher.ui.assessments.AssessmentScreen
+import com.yadbin.teacher.ui.assessments.AssessmentsScreen
 import com.yadbin.teacher.ui.auth.LoginScreen
 import com.yadbin.teacher.ui.auth.RegisterScreen
 import com.yadbin.teacher.ui.auth.ResetPasswordScreen
@@ -37,6 +39,8 @@ object Routes {
     const val STUDENT = "student/{id}?classId={classId}"
     const val AI_BUILDER = "aiBuilder/{classId}?studentId={studentId}"
     const val OVERVIEW = "overview"
+    const val ASSESSMENTS = "assessments"
+    const val ASSESSMENT = "assessment/{id}"
 }
 
 private fun NavHostController.toLoginClearingStack() {
@@ -82,6 +86,7 @@ fun AppNav() {
                 onOpenClass = { nav.navigate("class/$it") },
                 onCreateClass = { nav.navigate(Routes.CREATE_CLASS) },
                 onOverview = { nav.navigate(Routes.OVERVIEW) },
+                onAssessments = { nav.navigate(Routes.ASSESSMENTS) },
                 onLoggedOut = { nav.toLoginClearingStack() },
             )
         }
@@ -120,6 +125,13 @@ fun AppNav() {
                 // the draft is handed to the (editable) create form; the AI screen leaves the stack so Back from the form returns to the class
                 onUseDraft = { nav.navigate("newActivity/$classId") { popUpTo(Routes.AI_BUILDER) { inclusive = true } } },
             )
+        }
+        composable(Routes.ASSESSMENTS) {
+            AssessmentsScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate("assessment/$it") })
+        }
+        composable(Routes.ASSESSMENT) { e ->
+            val id = e.arguments?.getString("id") ?: return@composable
+            AssessmentScreen(assessmentId = id, onBack = { nav.popBackStack() }, onOpenAssessment = { nav.navigate("assessment/$it") })
         }
         composable(Routes.OVERVIEW) {
             OverviewScreen(onBack = { nav.popBackStack() }, onOpenClass = { nav.navigate("class/$it") })

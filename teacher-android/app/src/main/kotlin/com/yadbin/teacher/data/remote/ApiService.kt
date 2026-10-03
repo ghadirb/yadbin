@@ -157,6 +157,69 @@ class ApiService(private val c: ApiClient) {
         return c.request("POST", "/api/activities", ActivityCreated.serializer(), body)
     }
 
+    // ---- Teacher Assessments (آزمون‌های معلم) ----
+    suspend fun assessments(status: String = "all"): AssessmentList = c.request("GET", "/api/assessments?status=$status", AssessmentList.serializer())
+    suspend fun assessment(id: String): AssessmentDetail = c.request("GET", "/api/assessments/$id", AssessmentDetail.serializer())
+    suspend fun createAssessment(title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?): AssessmentDetail =
+        c.request("POST", "/api/assessments", AssessmentDetail.serializer(), assessmentBody(title, subject, gradeCode, level, description, minutes))
+    suspend fun updateAssessment(id: String, title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?): AssessmentDetail =
+        c.request("PUT", "/api/assessments/$id", AssessmentDetail.serializer(), assessmentBody(title, subject, gradeCode, level, description, minutes))
+    private fun assessmentBody(title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?): String = buildJsonObject {
+        put("title", title.trim())
+        put("subject", subject?.trim()?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("gradeCode", gradeCode?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("level", level?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("description", description?.trim()?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("suggestedMinutes", minutes?.let { JsonPrimitive(it) } ?: JsonNull)
+    }.toString()
+    private fun questionBody(q: QuestionDraft): String = buildJsonObject {
+        put("type", q.type); put("text", q.text.trim())
+        when (q.type) {
+            "multiple_choice" -> { put("options", JsonArray(q.options.map { JsonPrimitive(it.trim()) })); q.correctIndex?.let { put("correct", it) } }
+            "true_false" -> q.correctBool?.let { put("correct", it) }
+            else -> put("answers", JsonArray(q.answers.map { it.trim() }.filter { it.isNotEmpty() }.map { JsonPrimitive(it) }))
+        }
+        put("explanation", q.explanation.trim().ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+    }.toString()
+    suspend fun addAssessmentQuestion(id: String, q: QuestionDraft): AssessmentDetail = c.request("POST", "/api/assessments/$id/questions", AssessmentDetail.serializer(), questionBody(q))
+    suspend fun updateAssessmentQuestion(id: String, qid: String, q: QuestionDraft): AssessmentDetail = c.request("PUT", "/api/assessments/$id/questions/$qid", AssessmentDetail.serializer(), questionBody(q))
+    suspend fun deleteAssessmentQuestion(id: String, qid: String): AssessmentDetail = c.request("DELETE", "/api/assessments/$id/questions/$qid", AssessmentDetail.serializer())
+    suspend fun duplicateAssessmentQuestion(id: String, qid: String): AssessmentDetail = c.request("POST", "/api/assessments/$id/questions/$qid/duplicate", AssessmentDetail.serializer())
+    suspend fun reorderAssessment(id: String, order: List<String>): AssessmentDetail {
+        val body = buildJsonObject { put("order", JsonArray(order.map { JsonPrimitive(it) })) }.toString()
+        return c.request("POST", "/api/assessments/$id/reorder", AssessmentDetail.serializer(), body)
+    }
+    suspend fun startAssessmentPreview(id: String): AssessmentPreviewStarted = c.request("POST", "/api/assessments/$id/preview", AssessmentPreviewStarted.serializer())
+    suspend fun assessmentPreviewFeedback(id: String, feedback: String): AssessmentDetail {
+        val body = buildJsonObject { put("feedback", feedback) }.toString()
+        return c.request("POST", "/api/assessments/$id/preview-feedback", AssessmentDetail.serializer(), body)
+    }
+    /** [classId] null = publish only; with a class every student of the class gets a personal /play link. */
+    suspend fun publishAssessment(id: String, classId: String?): AssessmentDetail {
+        val body = buildJsonObject { if (classId != null) put("classId", classId) }.toString()
+        return c.request("POST", "/api/assessments/$id/publish", AssessmentDetail.serializer(), body)
+    }
+    suspend fun assignAssessment(id: String, classId: String): AssessmentDetail {
+        val body = buildJsonObject { put("classId", classId) }.toString()
+        return c.request("POST", "/api/assessments/$id/assign", AssessmentDetail.serializer(), body)
+    }
+    suspend fun duplicateAssessment(id: String): AssessmentDetail = c.request("POST", "/api/assessments/$id/duplicate", AssessmentDetail.serializer())
+    suspend fun newAssessmentVersion(id: String): AssessmentDetail = c.request("POST", "/api/assessments/$id/new-version", AssessmentDetail.serializer())
+    suspend fun setAssessmentArchived(id: String, archived: Boolean): AssessmentDetail =
+        c.request("POST", "/api/assessments/$id/${if (archived) "archive" else "unarchive"}", AssessmentDetail.serializer())
+    suspend fun deleteAssessment(id: String) { c.request("DELETE", "/api/assessments/$id", OkResponse.serializer()) }
+    suspend fun assessmentReport(id: String): AssessmentReport = c.request("GET", "/api/assessments/$id/report", AssessmentReport.serializer())
+    suspend fun studentAssessments(studentId: String): StudentAssessments = c.request("GET", "/api/students/$studentId/assessments", StudentAssessments.serializer())
+    /** AI makes a DRAFT only (never published). No student data is sent. */
+    suspend fun aiAssessmentDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int): AssessmentDetail {
+        val body = buildJsonObject {
+            put("prompt", prompt.trim()); put("questionCount", count)
+            subject?.trim()?.takeIf { it.isNotEmpty() }?.let { put("subject", it) }
+            gradeCode?.let { put("gradeCode", it) }; level?.let { put("level", it) }
+        }.toString()
+        return c.request("POST", "/api/ai/assessment-draft", AssessmentDetail.serializer(), body)
+    }
+
     suspend fun studentReport(id: String): StudentReport = c.request("GET", "/api/reports/student/$id", StudentReport.serializer())
     suspend fun classReport(id: String): ClassReport = c.request("GET", "/api/reports/class/$id", ClassReport.serializer())
 }
