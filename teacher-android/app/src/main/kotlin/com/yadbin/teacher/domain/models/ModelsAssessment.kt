@@ -82,7 +82,7 @@ import kotlinx.serialization.json.JsonElement
 /** What the teacher typed in the question editor (before it is sent). */
 data class QuestionDraft(
     val type: String,
-    val text: String,
+    val text: String = "",
     val options: List<String> = listOf("", "", "", ""),
     val correctIndex: Int? = null,
     val correctBool: Boolean? = null,
