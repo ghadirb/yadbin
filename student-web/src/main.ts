@@ -5,6 +5,7 @@ import { tokenFromPath } from './play/router';
 import { runSession } from './session/controller';
 import { openStore } from './storage/kv';
 import { createApi } from './sync/api';
+import { createAssessmentUi } from './assessment/screens';
 
 declare global { interface Window { __yadbinReady?: boolean } }
 
@@ -25,7 +26,8 @@ async function boot() {
   if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(() => {});
   window.addEventListener('unhandledrejection', () => ui.error('generic', 'مشکلی پیش آمد. صفحه را دوباره باز کنید.', () => location.reload()));
   const store = await openStore();
-  try { await runSession({ token, api, store, ui }); }
+  const assessmentUi = createAssessmentUi(root, { preview: !!previewMatch });
+  try { await runSession({ token, api, store, ui, assessmentUi, preview: !!previewMatch }); }
   catch (e) { console.error(e); ui.error('generic', 'مشکلی پیش آمد. صفحه را دوباره باز کنید.', () => location.reload()); }
 }
 void boot();

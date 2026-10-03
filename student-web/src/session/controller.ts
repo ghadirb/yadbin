@@ -4,6 +4,7 @@ import type { PlayPayload, PreviewInfo, SessionState } from '../question-engine/
 import type { KvStore } from '../storage/kv';
 import type { PlayApi } from '../sync/api';
 import { autoRetry, flushPending, submitResult } from '../sync/sync';
+import { freshAssessment, isAssessmentState, runAssessment, type AssessmentPayload, type AssessmentState, type AssessmentUi } from '../assessment/runner';
 
 export interface QuestionInfo { index: number; total: number; ruleJustChanged: boolean }
 export interface GameUi {
@@ -15,7 +16,7 @@ export interface GameUi {
   end(kind: 'sent' | 'saved' | 'already', accuracy?: number | null): void;
   error(kind: 'invalid' | 'expired' | 'canceled' | 'network' | 'generic', message: string, retry?: () => void): void;
 }
-export interface SessionDeps { token: string; api: PlayApi; store: KvStore; ui: GameUi; now?: () => number; retryIntervalMs?: number; firstLoadRetryDelayMs?: number }
+export interface SessionDeps { token: string; api: PlayApi; store: KvStore; ui: GameUi; /** Teacher Assessments (آزمون معلم). Optional so activity-only callers/fakes keep working. */ assessmentUi?: AssessmentUi; preview?: boolean; now?: () => number; retryIntervalMs?: number; firstLoadRetryDelayMs?: number }
 export type SessionOutcome = 'finished' | 'already_done' | 'error';
 
 const stateKey = (t: string) => `session:${t}`;
@@ -55,6 +56,7 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
       return 'error';
     }
     // Local session exists (started earlier): keep playing offline.
+    if (isAssessmentState(local) && d.assessmentUi) return (await runAssessment({ token, api, store, ui: d.assessmentUi, now: d.now, retryIntervalMs: d.retryIntervalMs, preview: d.preview }, local)) === 'finished' ? 'finished' : 'error';
   } else if (r.kind === 'http') {
     const kind = r.status === 404 ? 'invalid' : r.error === 'canceled' ? 'canceled' : r.error === 'expired' ? 'expired' : 'generic';
     ui.error(kind, r.message);
@@ -63,6 +65,13 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
     await store.del(stateKey(token));
     ui.end('already');
     return 'already_done';
+  } else if (r.data?.kind === 'teacher_assessment' && r.data?.session && r.data?.assessment) {
+    if (!d.assessmentUi) { ui.error('generic', 'این آزمون در این نسخه باز نمی‌شود. صفحه را دوباره باز کنید.'); return 'error'; }
+    const data = r.data as AssessmentPayload;
+    const reuse = isAssessmentState(local) && local.sessionId === data.session.id;
+    const st = reuse ? (local as unknown as AssessmentState) : freshAssessment(data, now());
+    if (!reuse) await store.set(stateKey(token), st);
+    return (await runAssessment({ token, api, store, ui: d.assessmentUi, now: d.now, retryIntervalMs: d.retryIntervalMs, preview: d.preview }, st)) === 'finished' ? 'finished' : 'error';
   } else if (!r.data?.session) {
     ui.error('generic', 'مشکلی پیش آمد. صفحه را دوباره باز کنید.'); // e.g. API base misconfigured → HTML instead of JSON
     return 'error';

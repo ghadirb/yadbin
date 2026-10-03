@@ -37,3 +37,12 @@ h1 { font-size:2rem; margin:.2em 0 .5em; } h2 { font-size:1.5rem; margin:.2em 0 
 .preview-banner { background:#e0e7ff; color:#312e81; }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 .end-line { font-size:1.15rem; margin:6px 0; } .my-progress { margin-top:12px; font-size:1.1rem; }
+
+/* Teacher Assessments (آزمون معلم) */
+.option.text { font-size:1.15rem; min-height:60px; padding:10px 16px; text-align:right; }
+.option.picked { border-color:var(--brand); background:#e0e7ff; } @media (prefers-color-scheme: dark) { .option.picked { background:#312e81; } }
+.a-text { font-size:1.35rem; line-height:1.8; margin:12px 0 18px; }
+.a-input { width:100%; font:inherit; font-size:1.3rem; padding:14px 16px; border-radius:18px; border:3px solid var(--line); background:var(--card); color:var(--fg); box-sizing:border-box; }
+.a-input:focus-visible { outline:4px solid #f59e0b; outline-offset:3px; }
+.a-nav { display:flex; gap:12px; justify-content:space-between; flex-wrap:wrap; }
+.a-row { padding:8px 0; border-top:1px solid var(--line); } .a-row.ok strong { color:var(--ok); } .a-row.bad strong { color:var(--retry); }
