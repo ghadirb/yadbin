@@ -2,6 +2,7 @@ import type { Env } from '../env';
 import { effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from '../db/queries';
 import { gradeByCode } from '../education/catalog';
 import { buildEducationalProfile, buildRecommendations, buildStudentReport, studentHistory } from '../services/metrics';
+import { eraseAssessmentDataForStudent } from './assessments';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { parse, studentSchema, studentUpdateSchema } from '../validation/schemas';
@@ -78,6 +79,7 @@ export async function clearStudentData(env: Env, teacherId: string, id: string) 
     env.DB.prepare(`DELETE FROM game_sessions WHERE activity_student_id IN ${ast}`).bind(id),
     env.DB.prepare('DELETE FROM activity_students WHERE student_id = ?').bind(id),
     env.DB.prepare('DELETE FROM student_metrics WHERE student_id = ?').bind(id),
+    ...eraseAssessmentDataForStudent(env.DB, id), // teacher-assessment answers/results are erased with the rest
   ]);
   return json({ ok: true, student: { id: s.id, name: s.display_name }, clearedActivities: count?.n ?? 0 });
 }
@@ -91,6 +93,7 @@ export async function deleteStudent(env: Env, teacherId: string, id: string) {
     env.DB.prepare(`DELETE FROM game_sessions WHERE activity_student_id IN ${ast}`).bind(id),
     env.DB.prepare('DELETE FROM activity_students WHERE student_id = ?').bind(id),
     env.DB.prepare('DELETE FROM student_metrics WHERE student_id = ?').bind(id),
+    ...eraseAssessmentDataForStudent(env.DB, id),
     env.DB.prepare('DELETE FROM class_students WHERE student_id = ?').bind(id),
     env.DB.prepare('DELETE FROM students WHERE id = ? AND teacher_id = ?').bind(id, teacherId),
   ]);

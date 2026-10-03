@@ -5,6 +5,9 @@ import * as classes from './routes/classes';
 import * as students from './routes/students';
 import * as activities from './routes/activities';
 import * as play from './routes/play';
+import * as ap from './routes/assessment-play';
+import * as as_ from './routes/assessments';
+import { assessmentDraft } from './ai/assessment-draft';
 import * as reports from './routes/reports';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
@@ -61,11 +64,35 @@ add('POST', '/api/activities/:id/preview', true, (req, env, p, t) => activities.
 add('POST', '/api/activities/:id/preview-feedback', true, (req, env, p, t) => activities.recordPreviewFeedback(req, env, t, p.id));
 add('POST', '/api/activities/:id/publish', true, (req, env, p, t) => activities.publishActivity(req, env, t, p.id));
 
-add('GET', '/api/play/:token', false, (req, env, p) => play.getPlay(env, p.token, req));
+// Teacher Assessments share the activity URLs: an assessment token is answered by assessment-play, anything else falls through.
+add('GET', '/api/play/:token', false, async (req, env, p) => (await ap.getPlay(env, p.token, req)) ?? play.getPlay(env, p.token, req));
 add('GET', '/api/play/:token/progress', false, (req, env, p) => play.getProgress(env, p.token, req));
-add('POST', '/api/play/:token/complete', false, (req, env, p) => play.completePlay(req, env, p.token));
-add('GET', '/api/preview/:token', false, (req, env, p) => play.getPreview(env, p.token, req));
-add('POST', '/api/preview/:token/complete', false, (req, env, p) => play.completePreview(req, env, p.token));
+add('POST', '/api/play/:token/complete', false, async (req, env, p) => (await ap.completePlay(req, env, p.token)) ?? play.completePlay(req, env, p.token));
+add('GET', '/api/preview/:token', false, async (req, env, p) => (await ap.getPreview(env, p.token, req)) ?? play.getPreview(env, p.token, req));
+add('POST', '/api/preview/:token/complete', false, async (req, env, p) => (await ap.completePreview(req, env, p.token)) ?? play.completePreview(req, env, p.token));
+
+// Teacher Assessments (آزمون‌های معلم) — separate content type, same lifecycle / preview / play-link system.
+add('GET', '/api/assessments', true, (req, env, _p, t) => as_.listAssessments(req, env, t));
+add('POST', '/api/assessments', true, (req, env, _p, t) => as_.createAssessment(req, env, t));
+add('POST', '/api/ai/assessment-draft', true, (req, env, _p, t) => assessmentDraft(req, env, t));
+add('GET', '/api/assessments/:id', true, (_r, env, p, t) => as_.getAssessment(env, t, p.id));
+add('PUT', '/api/assessments/:id', true, (req, env, p, t) => as_.updateAssessment(req, env, t, p.id));
+add('DELETE', '/api/assessments/:id', true, (_r, env, p, t) => as_.deleteAssessment(env, t, p.id));
+add('POST', '/api/assessments/:id/archive', true, (_r, env, p, t) => as_.setAssessmentArchived(env, t, p.id, true));
+add('POST', '/api/assessments/:id/unarchive', true, (_r, env, p, t) => as_.setAssessmentArchived(env, t, p.id, false));
+add('POST', '/api/assessments/:id/duplicate', true, (_r, env, p, t) => as_.duplicateAssessment(env, t, p.id));
+add('POST', '/api/assessments/:id/new-version', true, (_r, env, p, t) => as_.newAssessmentVersion(env, t, p.id));
+add('POST', '/api/assessments/:id/questions', true, (req, env, p, t) => as_.addQuestion(req, env, t, p.id));
+add('PUT', '/api/assessments/:id/questions/:qid', true, (req, env, p, t) => as_.updateQuestion(req, env, t, p.id, p.qid));
+add('DELETE', '/api/assessments/:id/questions/:qid', true, (_r, env, p, t) => as_.deleteQuestion(env, t, p.id, p.qid));
+add('POST', '/api/assessments/:id/questions/:qid/duplicate', true, (_r, env, p, t) => as_.duplicateQuestion(env, t, p.id, p.qid));
+add('POST', '/api/assessments/:id/reorder', true, (req, env, p, t) => as_.reorderQuestions(req, env, t, p.id));
+add('POST', '/api/assessments/:id/preview', true, (_r, env, p, t) => as_.startAssessmentPreview(env, t, p.id));
+add('POST', '/api/assessments/:id/preview-feedback', true, (req, env, p, t) => as_.assessmentPreviewFeedback(req, env, t, p.id));
+add('POST', '/api/assessments/:id/publish', true, (req, env, p, t) => as_.publishAssessment(req, env, t, p.id));
+add('POST', '/api/assessments/:id/assign', true, (req, env, p, t) => as_.assignAssessment(req, env, t, p.id));
+add('GET', '/api/assessments/:id/report', true, (_r, env, p, t) => as_.assessmentReport(env, t, p.id));
+add('GET', '/api/students/:id/assessments', true, (_r, env, p, t) => as_.studentAssessments(env, t, p.id));
 
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
 add('GET', '/api/reports/class/:id', true, (_r, env, p, t) => reports.classReport(env, t, p.id));

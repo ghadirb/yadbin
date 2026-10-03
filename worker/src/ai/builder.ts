@@ -117,7 +117,7 @@ const AVALAI_DEFAULT_MODEL = 'gpt-5.4-mini';
 /** AvalAI (OpenAI-compatible) Chat Completions. Only the system rules + the anonymised facts string are sent.
  *  Returns null on any failure (timeout, 4xx/5xx incl. 429, malformed body) — the caller then keeps the rule-based draft.
  *  The key is never logged and never echoed to the client. */
-export async function avalaiText(env: Env, facts: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+export async function avalaiText(env: Env, facts: string, fetchImpl: typeof fetch = fetch, system: string = SYSTEM): Promise<string | null> {
   if (!env.AVALAI_API_KEY) return null;
   const base = (env.AVALAI_BASE_URL || AVALAI_DEFAULT_BASE).replace(/\/+$/, '');
   const ctl = new AbortController();
@@ -126,7 +126,7 @@ export async function avalaiText(env: Env, facts: string, fetchImpl: typeof fetc
     const res = await fetchImpl(`${base}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AVALAI_API_KEY}`, 'X-Client-Request-Id': crypto.randomUUID() },
-      body: JSON.stringify({ model: env.AVALAI_MODEL || AVALAI_DEFAULT_MODEL, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: facts }], max_tokens: 700, temperature: 0.3 }),
+      body: JSON.stringify({ model: env.AVALAI_MODEL || AVALAI_DEFAULT_MODEL, messages: [{ role: 'system', content: system }, { role: 'user', content: facts }], max_tokens: system === SYSTEM ? 700 : 3500, temperature: 0.3 }),
       signal: ctl.signal,
     });
     if (!res.ok) { console.warn(`avalai: HTTP ${res.status} id=${res.headers.get('avalai-request-id') ?? '-'}`); return null; }
@@ -139,10 +139,10 @@ export async function avalaiText(env: Env, facts: string, fetchImpl: typeof fetc
   } finally { clearTimeout(timer); }
 }
 
-async function workersAiText(env: Env, facts: string): Promise<string | null> {
+async function workersAiText(env: Env, facts: string, system: string = SYSTEM): Promise<string | null> {
   if (!env.AI) return null;
   try {
-    const out: any = await env.AI.run(env.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct', { messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: facts }], max_tokens: 700, temperature: 0.3 });
+    const out: any = await env.AI.run(env.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct', { messages: [{ role: 'system', content: system }, { role: 'user', content: facts }], max_tokens: system === SYSTEM ? 700 : 3500, temperature: 0.3 });
     return typeof out === 'string' ? out : typeof out?.response === 'string' ? out.response : JSON.stringify(out?.response ?? out);
   } catch { return null; }
 }
@@ -150,6 +150,10 @@ async function workersAiText(env: Env, facts: string): Promise<string | null> {
 /** Provider order: AvalAI → Cloudflare Workers AI → none (rule engine only). */
 async function modelText(env: Env, facts: string): Promise<string | null> {
   return (await avalaiText(env, facts)) ?? (await workersAiText(env, facts));
+}
+/** Same providers and order, with a caller-supplied system prompt (used by the teacher-assessment drafter). */
+export async function modelTextWith(env: Env, system: string, facts: string): Promise<string | null> {
+  return (await avalaiText(env, facts, fetch, system)) ?? (await workersAiText(env, facts, system));
 }
 
 async function context(env: Env, teacherId: string, classId?: string, studentId?: string): Promise<Ctx> {

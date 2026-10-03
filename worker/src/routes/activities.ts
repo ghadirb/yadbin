@@ -39,7 +39,7 @@ async function assertClassOpen(env: Env, teacherId: string, classId: string) {
   return c;
 }
 
-async function chooseStudents(env: Env, teacherId: string, classId: string, studentIds: 'all' | string[]) {
+export async function chooseStudents(env: Env, teacherId: string, classId: string, studentIds: 'all' | string[]) {
   const active = await env.DB.prepare(
     `SELECT s.id, s.display_name FROM class_students cs JOIN students s ON s.id = cs.student_id
       WHERE cs.class_id = ? AND cs.removed_at IS NULL AND s.teacher_id = ? ORDER BY cs.added_at`,

@@ -57,7 +57,7 @@ export const LIFECYCLE_LABELS_FA: Record<Lifecycle, string> = { active: 'فعا�
 export const activityDto = (a: any, assigned = 0, completed = 0) => {
   const lifecycle = activityLifecycle(a, assigned, completed);
   return {
-    id: a.id, classId: a.class_id, gameType: a.game_type, difficultyMode: a.difficulty_mode, questionCount: a.question_count,
+    id: a.id, contentType: 'cognitive_activity', classId: a.class_id, gameType: a.game_type, difficultyMode: a.difficulty_mode, questionCount: a.question_count,
     title: a.title || GAME_NAMES_FA[a.game_type] || a.game_type, description: a.description ?? null, suggestedMinutes: a.suggested_minutes ?? null,
     status: a.status, publishState: a.publish_state ?? (a.status === 'active' ? 'published' : a.status), lifecycle, lifecycleLabel: LIFECYCLE_LABELS_FA[lifecycle], archivedAt: a.archived_at ?? null,
     requiresPreview: !!a.requires_preview,

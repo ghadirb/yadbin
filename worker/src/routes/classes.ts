@@ -3,6 +3,7 @@ import { activityDto, classDto, effectiveGradeOrder, getOwnedClass, getOwnedStud
 import { gradeByCode } from '../education/catalog';
 import { recomputeStudentMetrics } from '../services/metrics';
 import { GAME_TYPES, MIN_SAMPLES } from '../scoring';
+import { eraseAssessmentDataForClass } from './assessments';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { bulkStudentsSchema, classSchema, parse } from '../validation/schemas';
@@ -100,6 +101,7 @@ export async function deleteClass(env: Env, teacherId: string, id: string) {
     env.DB.prepare(`DELETE FROM game_sessions WHERE activity_student_id IN ${sub}`).bind(id),
     env.DB.prepare(`DELETE FROM activity_students WHERE activity_id IN (SELECT id FROM activities WHERE class_id = ?)`).bind(id),
     env.DB.prepare('DELETE FROM activities WHERE class_id = ?').bind(id),
+    ...eraseAssessmentDataForClass(env.DB, id),
     env.DB.prepare('DELETE FROM class_students WHERE class_id = ?').bind(id),
     env.DB.prepare('DELETE FROM classes WHERE id = ? AND teacher_id = ?').bind(id, teacherId),
   ]);
