@@ -253,3 +253,18 @@ describe('reports: drafts and previews never count as student work', () => {
     expect((await t.api('GET', `/api/students/${students[0].id}/history`, undefined, token)).data.history).toHaveLength(1);
   });
 });
+
+describe('edit screen sends every field', () => {
+  it('re-sending identical values (what the full edit screen does) does NOT invalidate an approved preview', async () => {
+    const { token } = await registerTeacher(t);
+    const { classId } = await klass(token, 'g6', 1);
+    const c = await mk(token, { classId, gameType: 'memory', difficultyMode: 'medium', questionCount: 8, level: 'intermediate', skills: ['memory'], gradeMin: 'g5', gradeMax: 'g6', ageMin: 10, ageMax: 12 });
+    const id = c.activity.id;
+    const { pt, p } = await startPreview(token, id); await finishPreview(pt, p, 8);
+    await t.api('POST', `/api/activities/${id}/preview-feedback`, { feedback: 'suitable' }, token);
+    const same = await t.api('PUT', `/api/activities/${id}`, { title: 'عنوان تازه', description: 'توضیح', suggestedMinutes: 6, difficultyMode: 'medium', questionCount: 8, level: 'intermediate', skills: ['memory'], gradeMin: 'g5', gradeMax: 'g6', ageMin: 10, ageMax: 12 }, token);
+    expect(same.data.activity).toMatchObject({ publishState: 'ready_to_publish', title: 'عنوان تازه', suggestedMinutes: 6 });
+    const changed = await t.api('PUT', `/api/activities/${id}`, { difficultyMode: 'medium', questionCount: 8, level: 'intermediate', skills: ['memory'], gradeMin: 'g5', gradeMax: 'g6', ageMin: 11, ageMax: 12 }, token); // age changed
+    expect(changed.data.activity).toMatchObject({ publishState: 'draft', previewFeedback: null });
+  });
+});

@@ -13,3 +13,9 @@
 فقط افزایشی و nullable (داده‌ی قبلی معتبر می‌ماند): `classes.archived_at`، `activities.title|description|suggested_minutes|archived_at`.
 «پایان‌یافته» ستون ندارد و از `status`/`expires_at`/تعداد تکمیل‌ها محاسبه می‌شود، چون SQLite امکان تغییر CHECK قدیمی را بدون بازسازی جدول نمی‌دهد.
 **قبل از دیپلوی:** `npm run db:migrate:remote` (یا اجرای workflow دیپلوی).
+
+
+## v1.2.x additions (migrations 0007–0008)
+* `activities`: `publish_state` (`draft|testing|ready_to_publish|published`, existing rows = `published`), `requires_preview`, `previewed_at`, `preview_feedback` (`suitable|too_easy|too_hard|needs_edit|skipped`), `teacher_approved_at`.
+* `teacher_preview_sessions`: isolated teacher runs (`token`, `status`, `tuning`, `gen_version`, `compare_mode`); deleted when an unpublished activity's settings change.
+* `game_sessions.gen_version`: generator version fixed at session creation (`NULL` = v1, `2` = progressive-difficulty generator).

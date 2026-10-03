@@ -85,12 +85,33 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun activity(id: String): ActivityDetail = c.request("GET", "/api/activities/$id", ActivityDetail.serializer())
     suspend fun cancelActivity(id: String) { c.request("POST", "/api/activities/$id/cancel", OkResponse.serializer()) }
-    suspend fun startPreview(id: String): PreviewStarted = c.request("POST", "/api/activities/$id/preview", PreviewStarted.serializer())
+    /** [compareMode] (easy/medium/hard) = try another level without changing the activity; it never counts as approval. */
+    suspend fun startPreview(id: String, compareMode: String? = null): PreviewStarted {
+        val body = if (compareMode != null) buildJsonObject { put("compareMode", compareMode) }.toString() else null
+        return c.request("POST", "/api/activities/$id/preview", PreviewStarted.serializer(), body)
+    }
     suspend fun previewFeedback(id: String, feedback: String): ActivityDetail {
         val body = buildJsonObject { put("feedback", feedback) }.toString()
         return c.request("POST", "/api/activities/$id/preview-feedback", ActivityDetail.serializer(), body)
     }
-    suspend fun publishActivity(id: String): ActivityDetail = c.request("POST", "/api/activities/$id/publish", ActivityDetail.serializer())
+    /** [withoutPreview] = the teacher explicitly chose to publish an untested activity. */
+    suspend fun publishActivity(id: String, withoutPreview: Boolean = false): ActivityDetail {
+        val body = if (withoutPreview) buildJsonObject { put("withoutPreview", true) }.toString() else null
+        return c.request("POST", "/api/activities/$id/publish", ActivityDetail.serializer(), body)
+    }
+    /** Full edit: every setting is sent (null clears the optional ones). */
+    suspend fun updateActivityFull(id: String, e: ActivityEdit): ActivityDetail {
+        val body = buildJsonObject {
+            put("title", e.title.trim()); put("description", e.description.trim())
+            put("suggestedMinutes", e.suggestedMinutes?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("difficultyMode", e.difficultyMode); put("questionCount", e.questionCount)
+            put("level", e.level?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("skills", if (e.skills.isEmpty()) JsonNull else JsonArray(e.skills.map { JsonPrimitive(it) }))
+            put("gradeMin", e.gradeMin?.let { JsonPrimitive(it) } ?: JsonNull); put("gradeMax", e.gradeMax?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("ageMin", e.ageMin?.let { JsonPrimitive(it) } ?: JsonNull); put("ageMax", e.ageMax?.let { JsonPrimitive(it) } ?: JsonNull)
+        }.toString()
+        return c.request("PUT", "/api/activities/$id", ActivityDetail.serializer(), body)
+    }
 
     // ---- v1.2 ----
     /** Sends every profile field: null clears it, so the edit form is the single source of truth. */
