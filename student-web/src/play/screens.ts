@@ -12,13 +12,30 @@ function play(root: HTMLElement, game: GameType, q: any, info: any) {
   return game === 'memory' ? playMemory(root, q, info) : game === 'attention' ? playAttention(root, q, info) : playProblem(root, q, info);
 }
 
+const fa = (n: number) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 export interface ProgressView { message: string; games: { gameName: string; completed: number }[] }
 
 /** [loadProgress] returns the child's own progress (or null when offline/unavailable). No names, no scores. */
-export function createDomUi(root: HTMLElement, loadProgress?: () => Promise<ProgressView | null>): GameUi {
+export function createDomUi(root: HTMLElement, loadProgress?: () => Promise<ProgressView | null>, opts: { preview?: boolean } = {}): GameUi {
+  const preview = !!opts.preview;
   return {
-    async welcome() {
+    async welcome(info) {
       clear(root);
+      if (preview) { // teacher: what is about to be tested (same game, same parameters a student gets)
+        const sm = info?.summary;
+        const rows: [string, string | null | undefined][] = sm ? [
+          ['نوع', sm.gameName], ['پایه', sm.gradeLabel], ['سن', sm.ageLabel], ['مهارت', sm.skillLabels.join('، ') || null],
+          ['سطح فعالیت', sm.levelLabel], ['سطح دشواری', sm.difficultyLabel], ['تعداد مراحل', fa(sm.questionCount)], ['زمان تقریبی', `${fa(sm.estimatedMinutes)} دقیقه`],
+        ] : [];
+        const go = bigButton('شروع آزمایش', () => {}, 'primary');
+        root.append(h('section', { class: 'card center', 'data-preview': 'summary' },
+          h('h1', {}, info?.comparison ? 'مقایسهٔ سطح' : 'آزمایش فعالیت'),
+          ...rows.filter(([, v]) => v).map(([k, v]) => h('p', { class: 'end-line' }, `${k}: ${v}`)),
+          h('p', {}, sm?.note ?? 'این اجرا فقط برای آزمایش شماست و در گزارش دانش‌آموزان ثبت نمی‌شود.'),
+          go));
+        await waitForClick(go);
+        return;
+      }
       const btn = bigButton('شروع بازی', () => {}, 'primary');
       root.append(h('section', { class: 'card center' },
         h('h1', {}, 'سلام 👋'),
@@ -42,6 +59,13 @@ export function createDomUi(root: HTMLElement, loadProgress?: () => Promise<Prog
     playQuestion: (game, q, info) => play(root, game, q, info),
     end(kind, accuracy) {
       clear(root);
+      if (preview) { // teacher: no child wording, no score; the verdict is given back in the teacher app
+        root.append(h('section', { class: 'card center', role: 'status', 'data-preview': 'end' },
+          h('h1', {}, 'آزمایش تمام شد'),
+          h('p', {}, kind === 'already' ? 'این آزمایش قبلاً کامل شده است.' : 'این اجرا در هیچ گزارشی ثبت نشد.'),
+          h('p', {}, 'به اپ معلم برگردید و بگویید تجربه‌تان چطور بود: «مناسب است»، «کمی آسان است»، «کمی سخت است» یا «نیاز به ویرایش دارد».')));
+        return;
+      }
       const msg = kind === 'sent' ? ['آفرین! 🎉', 'فعالیت تمام شد. می‌توانی این صفحه را ببندی.']
         : kind === 'saved' ? ['آفرین! 🎉', 'نتیجه روی دستگاه ذخیره شد و بعداً ارسال می‌شود.']
         : ['این فعالیت قبلاً انجام شده است.', ''];
@@ -73,6 +97,10 @@ export function createDomUi(root: HTMLElement, loadProgress?: () => Promise<Prog
       root.append(card);
     },
   };
+}
+
+export function previewBanner(): HTMLElement {
+  return h('div', { class: 'banner preview-banner', role: 'status' }, 'حالت آزمایش معلم — نتیجهٔ این اجرا برای هیچ دانش‌آموزی ثبت نمی‌شود.');
 }
 
 export function offlineBanner(): HTMLElement {

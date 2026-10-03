@@ -1,13 +1,14 @@
 import { scoreAttention, scoreMemory, scoreProblemSolving, type GameType } from '../scoring';
 import { afterItem, itemScore, pickNext } from '../question-engine/selector';
-import type { PlayPayload, SessionState } from '../question-engine/types';
+import type { PlayPayload, PreviewInfo, SessionState } from '../question-engine/types';
 import type { KvStore } from '../storage/kv';
 import type { PlayApi } from '../sync/api';
 import { autoRetry, flushPending, submitResult } from '../sync/sync';
 
 export interface QuestionInfo { index: number; total: number; ruleJustChanged: boolean }
 export interface GameUi {
-  welcome(): Promise<void>;
+  /** [preview] is set only for a teacher preview (summary + comparison flag). */
+  welcome(preview?: PreviewInfo): Promise<void>;
   tutorial(game: GameType): Promise<void>;
   /** Renders one question; resolves with the raw event (and, for scoring the adaptive block, whether it was correct). */
   playQuestion(game: GameType, q: any, info: QuestionInfo): Promise<{ event: any; correct?: boolean }>;
@@ -21,6 +22,7 @@ const stateKey = (t: string) => `session:${t}`;
 const fresh = (d: PlayPayload, now: number): SessionState => ({
   sessionId: d.session.id, game: d.game, difficultyMode: d.difficultyMode, questionCount: d.questionCount, pools: d.pools,
   difficulty: d.startDifficulty, used: [], events: [], blockScores: [], tutorialDone: false, startedAtMs: now, activeMs: 0, finished: false,
+  ...(d.preview ? { preview: { comparison: !!d.comparison, summary: d.summary ?? null } } : {}),
 });
 
 /** The very first request on a flaky/filtered network often fails once and then works: retry quietly before bothering the child. */
@@ -72,7 +74,7 @@ export async function runSession(d: SessionDeps): Promise<SessionOutcome> {
   const save = () => store.set(stateKey(token), s);
 
   if (!s.tutorialDone) {
-    if (s.events.length === 0) await ui.welcome();
+    if (s.events.length === 0) await ui.welcome(s.preview);
     await ui.tutorial(s.game); // never recorded
     s.tutorialDone = true; await save();
   }

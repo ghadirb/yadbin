@@ -34,5 +34,6 @@ h1 { font-size:2rem; margin:.2em 0 .5em; } h2 { font-size:1.5rem; margin:.2em 0 
 .feedback.ok { color:var(--ok); border-color:var(--ok); } .feedback.retry { color:var(--retry); border-color:var(--retry); }
 .hints { width:100%; } .hint { background:var(--card); border-radius:14px; padding:10px 14px; border-inline-start:6px solid var(--brand); margin:8px 0; }
 .banner { background:#fef3c7; color:#78350f; text-align:center; padding:10px; font-weight:700; }
+.preview-banner { background:#e0e7ff; color:#312e81; }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 .end-line { font-size:1.15rem; margin:6px 0; } .my-progress { margin-top:12px; font-size:1.1rem; }
