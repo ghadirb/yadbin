@@ -43,6 +43,6 @@ describe('first-load retry', () => {
     const api = { getPlay: async () => { calls++; return { kind: 'network' }; }, complete: async () => ({ kind: 'network' }) } as any;
     const ui: any = { error: (k: string) => { kind = k; } };
     expect(await runSession({ token: 'ABCDEFGH', api, store: new MemoryKv(), ui, firstLoadRetryDelayMs: 1 })).toBe('error');
-    expect(calls).toBe(3); expect(kind).toBe('network');
+    expect(calls).toBe(4); expect(kind).toBe('network');
   });
 });

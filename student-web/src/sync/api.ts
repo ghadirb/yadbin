@@ -10,7 +10,7 @@ export interface PlayApi {
   progress?(token: string): Promise<ApiResult<any>>;
 }
 
-export function createApi(base = '', previewOrFetch: boolean | typeof fetch = false, fetchOrTimeout: typeof fetch | number = (...a) => fetch(...a), timeoutMs = 8000): PlayApi {
+export function createApi(base = '', previewOrFetch: boolean | typeof fetch = false, fetchOrTimeout: typeof fetch | number = (...a) => fetch(...a), timeoutMs = 15000): PlayApi {
   const preview = typeof previewOrFetch === 'boolean' ? previewOrFetch : false;
   const fetchImpl = (typeof previewOrFetch === 'function' ? previewOrFetch : typeof fetchOrTimeout === 'function' ? fetchOrTimeout : (...a: Parameters<typeof fetch>) => fetch(...a)) as typeof fetch;
   if (typeof fetchOrTimeout === 'number') timeoutMs = fetchOrTimeout;

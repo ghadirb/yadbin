@@ -27,7 +27,7 @@ const fresh = (d: PlayPayload, now: number): SessionState => ({
 });
 
 /** The very first request on a flaky/filtered network often fails once and then works: retry quietly before bothering the child. */
-async function getPlayWithRetry(api: PlayApi, token: string, delayMs: number, tries = 3) {
+async function getPlayWithRetry(api: PlayApi, token: string, delayMs: number, tries = 4) {
   let r = await api.getPlay(token);
   for (let i = 1; i < tries && r.kind === 'network'; i++) {
     await new Promise((res) => setTimeout(res, delayMs * i));
