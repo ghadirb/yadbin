@@ -23,6 +23,7 @@ import com.yadbin.teacher.core.network.ApiException
 import com.yadbin.teacher.core.network.NetworkException
 import com.yadbin.teacher.core.utils.Edu
 import com.yadbin.teacher.core.utils.fa
+import com.yadbin.teacher.data.repository.Loaded
 import com.yadbin.teacher.data.repository.Repository
 import com.yadbin.teacher.domain.models.*
 import com.yadbin.teacher.ui.activities.QrView
