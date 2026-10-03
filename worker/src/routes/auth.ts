@@ -5,6 +5,7 @@ import { HttpError, json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { clearRateLimit, rateLimit, rateLimitIp } from '../utils/ratelimit';
 import { requireSecret } from '../auth/middleware';
+import { startTrialIfNeeded } from '../subscription/entitlements';
 import { loginSchema, parse, registerSchema, resetPasswordSchema } from '../validation/schemas';
 
 const teacherDto = (t: any) => ({ id: t.id, name: t.name, phone: t.phone });
@@ -29,6 +30,8 @@ export async function register(req: Request, env: Env) {
   const recoveryCode = newRecoveryCode();
   await env.DB.prepare('INSERT INTO teachers (id,name,phone,password_hash,recovery_hash,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
     .bind(id, name, phone, await hashPassword(password), await hashPassword(normalizeRecoveryCode(recoveryCode)), now, now).run();
+  // The one-and-only Trial starts here, on the server clock. A failure must not break registration: it is retried on first access.
+  try { await startTrialIfNeeded(env, id); } catch (e) { console.error('trial start failed', e instanceof Error ? e.message : String(e)); }
   return json({ token: await signJwt(id, env.JWT_SECRET), teacher: { id, name, phone }, recoveryCode }, 201);
 }
 

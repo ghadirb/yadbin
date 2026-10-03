@@ -4,6 +4,8 @@ import { gradeByCode, levelLabel } from '../education/catalog';
 import { chooseStudents } from './activities';
 import { assessmentProblems, fromRow, MAX_QUESTIONS, questionSchema, QUESTION_TYPE_LABELS_FA, teacherView, toColumns, type QuestionInput, type StoredQuestion } from '../assessments/grading';
 import { addQuestionExtra, assessmentCreateSchema, assessmentFeedbackSchema, assessmentUpdateSchema, assignSchema, publishAssessmentSchema, reorderSchema } from '../assessments/schemas';
+import { playBaseUrl } from '../config/urls';
+import { enforceCreate } from '../subscription/gating';
 import { HttpError, json, notFound, readJson } from '../utils/http';
 import { newId, newPlayToken, nowIso } from '../utils/ids';
 import { parse } from '../validation/schemas';
@@ -15,8 +17,8 @@ import { parse } from '../validation/schemas';
 
 export const STATUS_LABELS_FA: Record<string, string> = { draft: 'پیش‌نویس', teacher_preview: 'در حال آزمایش', ready_to_publish: 'آماده انتشار', published: 'منتشرشده', archived: 'آرشیوشده' };
 const EDITABLE = new Set(['draft', 'teacher_preview', 'ready_to_publish']);
-const playUrl = (env: Env, token: string) => `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/play/${token}`;
-const previewUrl = (env: Env, token: string) => `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/preview/${token}`;
+const playUrl = (env: Env, token: string) => `${playBaseUrl(env)}/play/${token}`;
+const previewUrl = (env: Env, token: string) => `${playBaseUrl(env)}/preview/${token}`;
 
 export async function getOwnedAssessment(db: D1Database, teacherId: string, id: string) {
   const row = await db.prepare('SELECT * FROM assessments WHERE id = ? AND teacher_id = ?').bind(id, teacherId).first<any>();
@@ -90,6 +92,7 @@ const renumber = (env: Env, assessmentId: string, ids: string[]) => ids.map((qid
 
 export async function createAssessment(req: Request, env: Env, teacherId: string) {
   const b = parse(assessmentCreateSchema, await readJson(req));
+  await enforceCreate(env, teacherId, 'assessments');
   const id = newId(), now = nowIso();
   await env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, teacherId, id, 1, b.title, b.description ?? null, b.subject ?? null, b.gradeCode ?? null, b.level ?? null, b.suggestedMinutes ?? null, 'draft', now, now).run();
@@ -150,6 +153,7 @@ export async function setAssessmentArchived(env: Env, teacherId: string, id: str
   if (archived) {
     if (a.status !== 'archived') await env.DB.prepare("UPDATE assessments SET status='archived', archived_at=?, updated_at=? WHERE id=? AND teacher_id=?").bind(now, now, id, teacherId).run();
   } else if (a.status === 'archived') {
+    await enforceCreate(env, teacherId, 'assessments'); // an unarchived assessment counts again
     // back to where it can safely be: published stays published; an unpublished one returns as a draft (needs a fresh preview)
     await env.DB.batch([
       env.DB.prepare("UPDATE assessments SET status=?, archived_at=NULL, updated_at=?, previewed_at=NULL, preview_feedback=NULL, teacher_approved_at=NULL WHERE id=? AND teacher_id=?").bind(a.published_at ? 'published' : 'draft', now, id, teacherId),
@@ -162,6 +166,7 @@ export async function setAssessmentArchived(env: Env, teacherId: string, id: str
 /** Independent draft: new root, version 1, no assignments, no results. */
 export async function duplicateAssessment(env: Env, teacherId: string, id: string) {
   const a = await getOwnedAssessment(env.DB, teacherId, id);
+  await enforceCreate(env, teacherId, 'assessments'); // a copy is a new assessment
   const qs = await loadQuestions(env.DB, id);
   const nid = newId(), now = nowIso();
   await env.DB.batch([

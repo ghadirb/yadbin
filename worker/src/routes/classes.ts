@@ -4,6 +4,7 @@ import { gradeByCode } from '../education/catalog';
 import { recomputeStudentMetrics } from '../services/metrics';
 import { GAME_TYPES, MIN_SAMPLES } from '../scoring';
 import { eraseAssessmentDataForClass } from './assessments';
+import { enforceCreate } from '../subscription/gating';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { bulkStudentsSchema, classSchema, parse } from '../validation/schemas';
@@ -24,6 +25,7 @@ export async function listClasses(env: Env, teacherId: string, req?: Request) {
 
 export async function createClass(req: Request, env: Env, teacherId: string) {
   const b = parse(classSchema, await readJson(req));
+  await enforceCreate(env, teacherId, 'classes');
   const id = newId();
   const g = gradeByCode(b.gradeCode);
   await env.DB.prepare('INSERT INTO classes (id,teacher_id,name,grade,school_name,created_at,grade_code,grade_order,age_min,age_max,education_stage) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
@@ -71,7 +73,8 @@ export async function getClass(env: Env, teacherId: string, id: string) {
 
 /** Archive keeps every student, activity and result; the class only disappears from the active list and accepts no new activities. */
 export async function setClassArchived(env: Env, teacherId: string, id: string, archived: boolean) {
-  await getOwnedClass(env.DB, teacherId, id);
+  const existing = await getOwnedClass(env.DB, teacherId, id);
+  if (!archived && existing.archived_at) await enforceCreate(env, teacherId, 'classes'); // an unarchived class counts again
   await env.DB.prepare('UPDATE classes SET archived_at = ? WHERE id = ? AND teacher_id = ?').bind(archived ? nowIso() : null, id, teacherId).run();
   return json({ class: classDto(await getOwnedClass(env.DB, teacherId, id)) });
 }
@@ -125,6 +128,7 @@ export async function addStudentsToClass(req: Request, env: Env, teacherId: stri
   const cls = await getOwnedClass(env.DB, teacherId, classId);
   const grade = cls.grade as string;
   const valid = names.filter((n) => n.length >= 2 && n.length <= 80);
+  await enforceCreate(env, teacherId, 'students', valid.length);
   const now = nowIso();
   const created = valid.map((n) => ({ id: newId(), name: n }));
   if (created.length) {

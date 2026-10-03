@@ -5,6 +5,7 @@ import { extractJson, modelTextWith } from './builder';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { rateLimit } from '../utils/ratelimit';
+import { consumeAi, enforceCreate, requireAi } from '../subscription/gating';
 import { parse } from '../validation/schemas';
 import { z } from 'zod';
 import { loadQuestions, assessmentDto } from '../routes/assessments';
@@ -98,5 +99,9 @@ export async function createAiDraft(env: Env, teacherId: string, b: Request_, pr
 export async function assessmentDraft(req: Request, env: Env, teacherId: string) {
   const b = parse(requestSchema, await readJson(req));
   await rateLimit(env, `ai-assessment:${teacherId}`, 20, 3600);
-  return createAiDraft(env, teacherId, b, (system, facts) => modelTextWith(env, system, facts));
+  await requireAi(env, teacherId);
+  await enforceCreate(env, teacherId, 'assessments'); // the draft is saved as a new assessment
+  const res = await createAiDraft(env, teacherId, b, (system, facts) => modelTextWith(env, system, facts));
+  await consumeAi(env, teacherId);
+  return res;
 }

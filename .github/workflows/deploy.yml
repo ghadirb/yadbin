@@ -6,6 +6,8 @@ name: Deploy (Cloudflare Worker + Student Web)
 # Optional secret: CLOUDFLARE_ACCOUNT_ID (auto-detected when the token sees exactly one account)
 # Optional secret: AVALAI_API_KEY (enables the AvalAI provider of the AI Activity Builder; without it the rule engine is used)
 # Optional repo variable: AVALAI_MODEL (pinned model id; default in code)
+# Myket in-app purchase (docs/payments.md): secret MYKET_ACCESS_TOKEN (X-Access-Token from the Myket panel) and repo variable MYKET_PUBLIC_KEY
+#   (public RSA key of the app). Without them online payment simply stays «به‌زودی فعال می‌شود».
 on:
   workflow_dispatch:
     inputs:
@@ -72,15 +74,20 @@ jobs:
       - name: Deploy Worker
         working-directory: worker
         run: |
-          npx wrangler deploy 2>&1 | tee /tmp/deploy.log
+          VARS=()
+          if [ -n "$MYKET_KEY" ]; then VARS+=(--var "MYKET_PUBLIC_KEY:$MYKET_KEY"); fi
+          npx wrangler deploy "${VARS[@]}" 2>&1 | tee /tmp/deploy.log
           URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -n1)
           test -n "$URL" || { echo "::error::could not detect Worker URL"; exit 1; }
           echo "WORKER_URL=$URL" >> "$GITHUB_ENV"
           printf '%s' "$JWT" | npx wrangler secret put JWT_SECRET
           if [ -n "$AVALAI" ]; then printf '%s' "$AVALAI" | npx wrangler secret put AVALAI_API_KEY; else echo "AVALAI_API_KEY not set → AI builder uses the rule engine"; fi
+          if [ -n "$MYKET_TOKEN" ]; then printf '%s' "$MYKET_TOKEN" | npx wrangler secret put MYKET_ACCESS_TOKEN; else echo "MYKET_ACCESS_TOKEN not set → online payment stays 'coming soon'"; fi
         env:
           JWT: "${{ secrets.JWT_SECRET }}"
           AVALAI: "${{ secrets.AVALAI_API_KEY }}"
+          MYKET_TOKEN: "${{ secrets.MYKET_ACCESS_TOKEN }}"
+          MYKET_KEY: "${{ vars.MYKET_PUBLIC_KEY }}"
 
 
       - name: Smoke test

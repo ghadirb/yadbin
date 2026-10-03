@@ -3,6 +3,7 @@ import { effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from 
 import { gradeByCode } from '../education/catalog';
 import { buildEducationalProfile, buildRecommendations, buildStudentReport, studentHistory } from '../services/metrics';
 import { eraseAssessmentDataForStudent } from './assessments';
+import { enforceCreate } from '../subscription/gating';
 import { json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
 import { parse, studentSchema, studentUpdateSchema } from '../validation/schemas';
@@ -27,6 +28,7 @@ function profileColumns(b: ProfileInput, old: any = {}) {
 export async function createStudent(req: Request, env: Env, teacherId: string) {
   const b = parse(studentSchema, await readJson(req));
   const cls = b.classId ? await getOwnedClass(env.DB, teacherId, b.classId) : null;
+  await enforceCreate(env, teacherId, 'students');
   // A student without their own grade inherits the class grade.
   const input = { ...b, gradeCode: b.gradeCode === undefined ? cls?.grade_code ?? undefined : b.gradeCode };
   const c = profileColumns(input);

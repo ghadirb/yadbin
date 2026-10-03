@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url';
 const MIGRATIONS_DIR = new URL('../migrations/', import.meta.url);
 const SQL = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort().map((f) => readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8')).join('\n');
 
-export async function createEnv() {
+export async function createEnv(extraBindings: Record<string, string> = {}) {
   const out = buildSync({ entryPoints: [fileURLToPath(new URL('../src/index.ts', import.meta.url))], bundle: true, format: 'esm', write: false, platform: 'neutral', target: 'es2022', mainFields: ['module', 'main'] });
   const mf = new Miniflare({
     workers: [{
       name: 'yadbin', modules: true, script: out.outputFiles[0].text, compatibilityDate: '2025-01-01',
       d1Databases: { DB: crypto.randomUUID() },
-      bindings: { JWT_SECRET: 'test-secret-test-secret-test-secret', ALLOWED_ORIGIN: '*', PLAY_BASE_URL: 'https://play.example' },
+      bindings: { JWT_SECRET: 'test-secret-test-secret-test-secret', ALLOWED_ORIGIN: '*', PLAY_BASE_URL: 'https://play.example', ...extraBindings },
     }],
   });
   const db = await mf.getD1Database('DB');

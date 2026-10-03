@@ -16,6 +16,20 @@ ENVIRONMENT = "production"
 # PLAY_BASE_URL = the public origin of the Worker (workers.dev, or your custom domain later).
 ALLOWED_ORIGIN = "https://yadbin-api.ghadir-baraty3.workers.dev"
 PLAY_BASE_URL = "https://yadbin-api.ghadir-baraty3.workers.dev"
+# API_BASE_URL (optional) = origin used for payment callbacks; defaults to PLAY_BASE_URL. Switch both to https://yadbinapp.ir together later.
+
+# Subscription (v1.4). Every number below is optional: the defaults live in src/subscription/config.ts. Change here, no code change.
+# TRIAL_DAYS = "7"
+# FREE_MAX_CLASSES = "1"
+# FREE_MAX_STUDENTS = "10"
+# FREE_MAX_ASSESSMENTS = "3"
+# FREE_AI_REQUESTS = "3"        # AI requests per month on the Free plan
+
+# Online payment. Myket in-app purchase is the first real provider; it stays "coming soon" until BOTH
+# MYKET_PUBLIC_KEY (var, public RSA key from the Myket panel) and the MYKET_ACCESS_TOKEN SECRET exist.
+# See docs/payments.md. Never put the access token in this file.
+PAYMENT_PROVIDER = "myket"
+MYKET_PACKAGE_NAME = "com.yadbin.teacher"
 
 # Student Web (built by `npm run build` in ../student-web) is served from the same origin as the API.
 # Only /api/* runs Worker code; every other path is a static file, with SPA fallback to index.html (/play/{token}).

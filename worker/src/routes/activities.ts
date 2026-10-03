@@ -3,12 +3,13 @@ import { activityDto, effectiveGradeOrder, GAME_NAMES_FA, getOwnedActivity, getO
 import { activityFit, computeAge, GRADES, gradeByCode, inferGradeOrder, type Fit } from '../education/catalog';
 import { GEN_VERSION } from '../questions/generate-v2';
 import { previewSummary, previewTuning } from '../services/preview';
+import { playBaseUrl } from '../config/urls';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, newPlayToken, nowIso } from '../utils/ids';
 import { filterTemplates, templateById, templateDto } from '../education/templates';
 import { activitySchema, activityUpdateSchema, duplicateSchema, parse, previewFeedbackSchema, previewStartSchema, publishSchema, regenerateSchema } from '../validation/schemas';
 
-const playUrl = (env: Env, token: string) => `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/play/${token}`;
+const playUrl = (env: Env, token: string) => `${playBaseUrl(env)}/play/${token}`;
 const DEFAULT_EXPIRY_DAYS = 30;
 const gradeByOrderCode = (o: number | null) => (o == null ? null : GRADES.find((g) => g.order === o)?.code ?? null);
 const ORDINALS_FA = ['', 'اول', 'دوم', 'سوم', 'چهارم', 'پنجم', 'ششم', 'هفتم', 'هشتم', 'نهم', 'دهم'];
@@ -244,7 +245,7 @@ export async function startPreview(req: Request, env: Env, teacherId: string, id
   await env.DB.prepare('INSERT INTO teacher_preview_sessions (id,activity_id,teacher_id,token,started_at,tuning,gen_version,compare_mode) VALUES (?,?,?,?,?,?,?,?)')
     .bind(newId(), id, teacherId, token, nowIso(), tuning, GEN_VERSION, compare).run();
   if (!compare) await env.DB.prepare("UPDATE activities SET publish_state = CASE WHEN publish_state = 'draft' THEN 'testing' ELSE publish_state END WHERE id = ? AND teacher_id = ?").bind(id, teacherId).run();
-  return json({ token, url: `${(env.PLAY_BASE_URL || '').replace(/\/$/, '')}/preview/${token}`, comparison: !!compare, summary: previewSummary(a, cls, compare) });
+  return json({ token, url: `${playBaseUrl(env)}/preview/${token}`, comparison: !!compare, summary: previewSummary(a, cls, compare) });
 }
 
 /** Teacher's verdict after a completed (non-comparison) preview of the CURRENT settings.

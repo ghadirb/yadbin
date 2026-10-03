@@ -12,6 +12,7 @@ import * as reports from './routes/reports';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
+import * as sub from './routes/subscription';
 import { corsHeaders, HttpError, json } from './utils/http';
 
 type P = Record<string, string>;
@@ -93,6 +94,15 @@ add('POST', '/api/assessments/:id/publish', true, (req, env, p, t) => as_.publis
 add('POST', '/api/assessments/:id/assign', true, (req, env, p, t) => as_.assignAssessment(req, env, t, p.id));
 add('GET', '/api/assessments/:id/report', true, (_r, env, p, t) => as_.assessmentReport(env, t, p.id));
 add('GET', '/api/students/:id/assessments', true, (_r, env, p, t) => as_.studentAssessments(env, t, p.id));
+
+// Subscription / Trial / payments (v1.4). Access is decided server-side only (see subscription/entitlements.ts).
+add('GET', '/api/subscription', true, (_r, env, _p, t) => sub.getSubscription(env, t));
+add('GET', '/api/plans', false, (req, env) => sub.listPlans(env, req));
+add('POST', '/api/payment/create', true, (req, env, _p, t) => sub.postPaymentCreate(req, env, t));
+add('POST', '/api/payment/myket/confirm', true, (req, env, _p, t) => sub.postMyketConfirm(req, env, t));
+add('GET', '/api/payment/status', true, (req, env, _p, t) => sub.getPaymentStatus(req, env, t));
+add('POST', '/api/payment/callback', false, (req, env) => sub.paymentCallback(req, env));
+add('GET', '/api/payment/callback', false, (req, env) => sub.paymentCallback(req, env));
 
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
 add('GET', '/api/reports/class/:id', true, (_r, env, p, t) => reports.classReport(env, t, p.id));

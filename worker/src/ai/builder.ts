@@ -7,6 +7,7 @@ import { TEMPLATES } from '../education/templates';
 import { loadAggregates, studentContext } from '../services/metrics';
 import { json, readJson } from '../utils/http';
 import { rateLimit } from '../utils/ratelimit';
+import { aiAllowed, consumeAi } from '../subscription/gating';
 import { z } from 'zod';
 import { parse } from '../validation/schemas';
 
@@ -175,13 +176,14 @@ export async function activityDraft(req: Request, env: Env, teacherId: string) {
   const drafts = ruleDrafts(b.prompt, ctx);
   let source: 'ai' | 'rules' = 'rules';
   const facts = `Teacher request: \"\"\"${b.prompt}\"\"\"\nGrade: ${gradeByOrder(ctx.gradeOrder)?.code ?? 'unknown'}; age: ${ctx.age ?? 'unknown'}${ctx.skillNotes.length ? `; practice needed: ${ctx.skillNotes.join(', ')}` : ''}`;
-  const text = await modelText(env, facts); // null when no provider is configured or the provider failed → rules stay in place
+  const quota = await aiAllowed(env, teacherId);
+  const text = quota.allowed ? await modelText(env, facts) : null; // null when no provider / provider failed / Free AI quota used up → rules stay in place
   if (text) {
     const obj = extractJson(text);
-    if (obj) { drafts[0] = mergeModelDraft(drafts[0], obj); source = 'ai'; }
+    if (obj) { drafts[0] = mergeModelDraft(drafts[0], obj); source = 'ai'; await consumeAi(env, teacherId); }
   }
   return json({
-    draft: drafts[0], alternatives: drafts.slice(1), source, created: false, requiresTeacherApproval: true,
+    draft: drafts[0], alternatives: drafts.slice(1), source, created: false, requiresTeacherApproval: true, aiLimitReached: !quota.allowed,
     next: 'پیشنهاد را ویرایش کنید و سپس با «تأیید و ساخت فعالیت» (POST /activities) آن را بسازید.',
     notice: 'این فقط یک پیشنهاد است؛ هیچ فعالیتی بدون ویرایش و تأیید معلم ساخته یا ارسال نمی‌شود.',
   });
