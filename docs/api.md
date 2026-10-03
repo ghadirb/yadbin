@@ -55,3 +55,17 @@
 **وضعیت فعالیت** (`lifecycle`): `active` فعال · `ended` پایان‌یافته (لغو، منقضی، یا همه تمام کرده‌اند) · `archived` آرشیوشده. فیلد قدیمی `status` (`active|canceled`) تغییری نکرده است.
 
 **تاریخ‌ها:** API همیشه ISO-8601 UTC برمی‌گرداند؛ تبدیل به شمسی (به وقت تهران) فقط در نمایش اپ انجام می‌شود (`core/utils/Jalali.kt`).
+
+## اشتراک و پرداخت (v1.4)
+
+| مسیر | توضیح |
+|---|---|
+| GET `/api/subscription` | 🔒 وضعیت من: `subscription{plan,status,trialActive,subscriptionActive,trialExpiresAt,expiresAt,limits,features,serverTime}`، `usage{classes,students,assessments,aiRequests}`، `paymentsAvailable` |
+| GET `/api/plans` | عمومی: `plans[{id,name,period,durationDays,price,currency,priceAvailable}]`، `free{...}`، `trialDays`، `paymentsAvailable`. `price: null` = هنوز تعیین نشده |
+| POST `/api/payment/create` | 🔒 `{planId}` ⇒ `{paymentId,status,provider,kind,sku,developerPayload,redirectUrl,expiresAt}`. بدون provider/قیمت: `503 payments_unavailable` («پرداخت آنلاین به‌زودی فعال می‌شود») |
+| POST `/api/payment/myket/confirm` | 🔒 `{originalJson,signature}` خرید مایکت؛ پس از Verify: `{ok:true,status:"verified",alreadyProcessed}` |
+| GET `/api/payment/status?paymentId=` | 🔒 فقط مالک؛ `pending|verified|failed|expired` |
+| POST/GET `/api/payment/callback` | درگاه‌های redirect؛ بدون ورود، ولی هیچ‌چیز را بدون Verify سمت سرور فعال نمی‌کند |
+
+**خطای محدودیت:** HTTP 403 با `{error:"FEATURE_LIMIT_REACHED", message, details:{feature:"classes|students|assessments|ai", limit, current, plan, upgrade:true}}`.
+
