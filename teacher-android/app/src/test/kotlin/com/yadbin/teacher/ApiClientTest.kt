@@ -97,6 +97,27 @@ class ApiClientTest {
         assertEquals(10, second["questionCount"]!!.jsonPrimitive.content.toInt())
     }
 
+    @Test fun assessment_assign_and_publish_encode_selected_students_or_whole_class() = runTest {
+        repeat(4) { server.enqueue(ok(AssessmentModelsTest.DETAIL)) }
+        token = "jwt"
+        val cid = "3f2b8a52-6f4e-4a6e-9a39-0b1d6a0c7e11"
+        api.assignAssessment("a1", cid)                        // whole class: no studentIds key → server default 'all'
+        api.assignAssessment("a1", cid, listOf("s1", "s2"))    // hand-picked
+        api.publishAssessment("a1", cid, listOf("s1"))         // publish + hand-picked
+        api.publishAssessment("a1", null)                      // publish only
+        val whole = server.takeRequest(); val some = server.takeRequest(); val pub = server.takeRequest(); val only = server.takeRequest()
+        assertEquals("/api/assessments/a1/assign", whole.path)
+        val b1 = Json.parseToJsonElement(whole.body.readUtf8()).jsonObject
+        assertEquals(JsonPrimitive(cid), b1["classId"]); assertNull(b1["studentIds"])
+        val b2 = Json.parseToJsonElement(some.body.readUtf8()).jsonObject
+        assertEquals(listOf("s1", "s2"), (b2["studentIds"] as JsonArray).map { it.jsonPrimitive.content })
+        assertEquals("/api/assessments/a1/publish", pub.path)
+        val b3 = Json.parseToJsonElement(pub.body.readUtf8()).jsonObject
+        assertEquals(listOf("s1"), (b3["studentIds"] as JsonArray).map { it.jsonPrimitive.content })
+        val b4 = Json.parseToJsonElement(only.body.readUtf8()).jsonObject
+        assertNull(b4["classId"]); assertNull(b4["studentIds"])
+    }
+
     @Test fun class_without_school_omits_or_nulls_it() = runTest {
         token = "jwt"
         server.enqueue(ok("""{"class":{"id":"c1","name":"سوم الف","grade":"سوم","schoolName":null,"createdAt":"2026-01-01"}}""", 201))

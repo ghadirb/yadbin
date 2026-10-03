@@ -195,12 +195,18 @@ class ApiService(private val c: ApiClient) {
         return c.request("POST", "/api/assessments/$id/preview-feedback", AssessmentDetail.serializer(), body)
     }
     /** [classId] null = publish only; with a class every student of the class gets a personal /play link. */
-    suspend fun publishAssessment(id: String, classId: String?): AssessmentDetail {
-        val body = buildJsonObject { if (classId != null) put("classId", classId) }.toString()
+    suspend fun publishAssessment(id: String, classId: String?, studentIds: List<String>? = null): AssessmentDetail {
+        val body = buildJsonObject {
+            if (classId != null) { put("classId", classId); if (studentIds != null) put("studentIds", JsonArray(studentIds.map { JsonPrimitive(it) })) }
+        }.toString()
         return c.request("POST", "/api/assessments/$id/publish", AssessmentDetail.serializer(), body)
     }
-    suspend fun assignAssessment(id: String, classId: String): AssessmentDetail {
-        val body = buildJsonObject { put("classId", classId) }.toString()
+    /** [studentIds] null = whole class; otherwise only these students (ids of that class) get a personal link. */
+    suspend fun assignAssessment(id: String, classId: String, studentIds: List<String>? = null): AssessmentDetail {
+        val body = buildJsonObject {
+            put("classId", classId)
+            if (studentIds != null) put("studentIds", JsonArray(studentIds.map { JsonPrimitive(it) }))
+        }.toString()
         return c.request("POST", "/api/assessments/$id/assign", AssessmentDetail.serializer(), body)
     }
     suspend fun duplicateAssessment(id: String): AssessmentDetail = c.request("POST", "/api/assessments/$id/duplicate", AssessmentDetail.serializer())

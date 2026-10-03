@@ -70,8 +70,19 @@ class AssessmentViewModel(private val repo: Repository, private val id: String) 
         "suitable", "too_easy" -> "آزمون برای انتشار آماده شد."
         else -> "ثبت شد؛ آزمون را ویرایش و دوباره آزمایش کنید."
     }) { repo.assessmentPreviewFeedback(id, value) }
-    fun publish(classId: String?) = act("آزمون منتشر شد.") { repo.publishAssessment(id, classId) }
-    fun assign(classId: String) = act("آزمون به کلاس اختصاص یافت.") { repo.assignAssessment(id, classId) }
+    fun publish(classId: String?, studentIds: List<String>? = null) = act("آزمون منتشر شد.") { repo.publishAssessment(id, classId, studentIds) }
+    fun assign(classId: String, studentIds: List<String>? = null) =
+        act(if (studentIds == null) "آزمون به کلاس اختصاص یافت." else "آزمون به ${studentIds.size.fa()} دانش‌آموز اختصاص یافت.") { repo.assignAssessment(id, classId, studentIds) }
+    private val _students = MutableStateFlow<Ui<List<StudentRef>>?>(null)
+    val students: StateFlow<Ui<List<StudentRef>>?> = _students.asStateFlow()
+    /** Students of one class, for the "selected students" picker. */
+    fun loadStudents(classId: String) {
+        viewModelScope.launch {
+            _students.value = Ui.Loading
+            _students.value = loadUi { val l = repo.classDetail(classId); Loaded(l.data.students.map { StudentRef(it.id, it.name) }, l.fromCache) }
+        }
+    }
+    fun clearStudents() { _students.value = null }
     fun newVersion(onCreated: (String) -> Unit) {
         viewModelScope.launch {
             try { val d = repo.newAssessmentVersion(id); _message.value = "نسخهٔ جدید به‌صورت پیش‌نویس ساخته شد؛ نسخهٔ قبلی و نتیجه‌هایش دست‌نخورده ماند."; onCreated(d.assessment.id) }
@@ -240,9 +251,14 @@ fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment:
     deleteQ?.let { q -> ConfirmDialog("حذف سؤال", "این سؤال از آزمون حذف شود؟", "حذف", { deleteQ = null; vm.deleteQuestion(q.id) }, { deleteQ = null }) }
     if (confirmDelete) ConfirmDialog("حذف پیش‌نویس", "این پیش‌نویس برای همیشه حذف شود؟", "حذف", { confirmDelete = false; vm.delete(onBack) }, { confirmDelete = false })
     if (showFeedback) FeedbackDialog(onDismiss = { showFeedback = false }) { showFeedback = false; vm.feedback(it) }
-    if (showPublish && cur != null) PublishDialog(classes, live = cur.assessment.status == "published", onDismiss = { showPublish = false }) { cid ->
-        showPublish = false
-        if (cur.assessment.status == "published") { if (cid != null) vm.assign(cid) } else vm.publish(cid)
+    val studentsUi by vm.students.collectAsStateWithLifecycle()
+    if (showPublish && cur != null) PublishDialog(
+        classes, studentsUi, live = cur.assessment.status == "published",
+        onDismiss = { showPublish = false; vm.clearStudents() },
+        onLoadStudents = vm::loadStudents,
+    ) { cid, ids ->
+        showPublish = false; vm.clearStudents()
+        if (cur.assessment.status == "published") { if (cid != null) vm.assign(cid, ids) } else vm.publish(cid, ids)
     }
     qrFor?.let { l ->
         AlertDialog(
@@ -388,18 +404,74 @@ private fun FeedbackDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     )
 }
 
+/** Step 1: pick a class (or publish only). Step 2: whole class or hand-picked students of that class. */
 @Composable
-private fun PublishDialog(classes: List<ClassSummary>, live: Boolean, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+private fun PublishDialog(
+    classes: List<ClassSummary>, studentsUi: Ui<List<StudentRef>>?, live: Boolean,
+    onDismiss: () -> Unit, onLoadStudents: (String) -> Unit, onPick: (String?, List<String>?) -> Unit,
+) {
+    var picked by remember { mutableStateOf<ClassSummary?>(null) }
+    var wholeClass by remember { mutableStateOf(true) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    val cls = picked
+    val students = (studentsUi as? Ui.Ready<List<StudentRef>>)?.data.orEmpty()
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text(if (live) "اختصاص به کلاس" else "انتشار برای کدام کلاس؟") },
+        onDismissRequest = onDismiss,
+        title = { Text(if (cls == null) (if (live) "اختصاص به کلاس" else "انتشار برای کدام کلاس؟") else "برای چه کسانی؟ (${cls.name})") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (classes.isEmpty()) Text("کلاسی پیدا نشد. ابتدا یک کلاس بسازید.", style = MaterialTheme.typography.bodySmall)
-                classes.forEach { cl -> OutlinedButton(onClick = { onPick(cl.id) }, modifier = Modifier.fillMaxWidth()) { Text(cl.name) } }
-                if (!live) TextButton(onClick = { onPick(null) }) { Text("فقط منتشر کن (بدون اختصاص)") }
+                if (cls == null) {
+                    if (classes.isEmpty()) Text("کلاسی پیدا نشد. ابتدا یک کلاس بسازید.", style = MaterialTheme.typography.bodySmall)
+                    classes.forEach { cl ->
+                        OutlinedButton(onClick = { picked = cl; wholeClass = true; selected = emptySet(); onLoadStudents(cl.id) }, modifier = Modifier.fillMaxWidth()) { Text(cl.name) }
+                    }
+                    if (!live) TextButton(onClick = { onPick(null, null) }) { Text("فقط منتشر کن (بدون اختصاص)") }
+                } else when (studentsUi) {
+                    null, Ui.Loading -> LoadingBox(Modifier.height(120.dp))
+                    is Ui.Error -> ErrorBox(studentsUi.message) { onLoadStudents(cls.id) }
+                    is Ui.Ready -> {
+                        if (students.isEmpty()) Text("این کلاس دانش‌آموزی ندارد.", style = MaterialTheme.typography.bodySmall)
+                        else {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                RadioButton(selected = wholeClass, onClick = { wholeClass = true })
+                                Text("کل کلاس (${students.size.fa()} نفر)")
+                            }
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                RadioButton(selected = !wholeClass, onClick = { wholeClass = false })
+                                Text("انتخاب دانش‌آموزان")
+                            }
+                            if (!wholeClass) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = { selected = students.map { it.id }.toSet() }) { Text("انتخاب همه") }
+                                    TextButton(onClick = { selected = emptySet() }) { Text("پاک کردن") }
+                                }
+                                LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                                    items(students, key = { it.id }) { st ->
+                                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                            Checkbox(checked = st.id in selected, onCheckedChange = { selected = if (it) selected + st.id else selected - st.id })
+                                            Text(st.name)
+                                        }
+                                    }
+                                }
+                                Text("${selected.size.fa()} نفر انتخاب‌شده", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
             }
         },
-        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
+        confirmButton = {
+            if (cls != null) {
+                val canGo = students.isNotEmpty() && (wholeClass || selected.isNotEmpty())
+                Button(enabled = canGo, onClick = { onPick(cls.id, if (wholeClass) null else students.map { it.id }.filter { it in selected }) }) {
+                    Text(if (live) "اختصاص" else "انتشار")
+                }
+            }
+        },
+        dismissButton = {
+            if (cls != null) TextButton(onClick = { picked = null }) { Text("بازگشت") }
+            else TextButton(onClick = onDismiss) { Text("انصراف") }
+        },
     )
 }
 
