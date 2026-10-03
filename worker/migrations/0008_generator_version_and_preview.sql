@@ -4,3 +4,5 @@
 ALTER TABLE game_sessions ADD COLUMN gen_version INTEGER;
 -- Teacher preview sessions follow the same rule (they use the generator that students of this activity get).
 ALTER TABLE teacher_preview_sessions ADD COLUMN gen_version INTEGER;
+-- "Compare levels": a preview can try another difficulty mode WITHOUT changing the activity and without counting as its approval.
+ALTER TABLE teacher_preview_sessions ADD COLUMN compare_mode TEXT;

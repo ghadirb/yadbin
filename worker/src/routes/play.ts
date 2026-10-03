@@ -4,6 +4,7 @@ import { PROBLEM_BY_ID } from '../questions/bank';
 import { computeAge, gradeByOrder, inferGradeOrder } from '../education/catalog';
 import { tuningFor, tuningForV2, tuningFromRow } from '../education/tuning';
 import { GEN_VERSION } from '../questions/generate-v2';
+import { previewSummary, PREVIEW_TTL_MS } from '../services/preview';
 import { recomputeStudentMetrics } from '../services/metrics';
 import { scoreAttention, scoreMemory, scoreProblemSolving, type GameMetrics, type GameType } from '../scoring';
 import { HttpError, json, readJson } from '../utils/http';
@@ -103,7 +104,7 @@ export async function getPlay(env: Env, token: string, req?: Request) {
 }
 
 interface PreviewRow {
-  id: string; activity_id: string; teacher_id: string; token: string; status: string; started_at: string; tuning: number;
+  id: string; activity_id: string; teacher_id: string; token: string; status: string; started_at: string; tuning: number; gen_version: number | null; compare_mode: DifficultyMode | null;
   game_type: GameType; difficulty_mode: DifficultyMode; question_count: number;
 }
 async function loadPreview(env: Env, token: string): Promise<PreviewRow> {
@@ -111,21 +112,27 @@ async function loadPreview(env: Env, token: string): Promise<PreviewRow> {
   const row = await env.DB.prepare(`SELECT p.*, a.game_type, a.difficulty_mode, a.question_count
     FROM teacher_preview_sessions p JOIN activities a ON a.id = p.activity_id WHERE p.token = ?`).bind(token).first<PreviewRow>();
   if (!row) throw INVALID();
+  if (Date.parse(row.started_at) + PREVIEW_TTL_MS < Date.now()) throw new HttpError(410, 'expired', 'این لینک آزمایش منقضی شده است. دوباره «آزمایش فعالیت» را بزنید.');
   return row;
 }
+/** A comparison run plays another difficulty mode; otherwise the activity's own. */
+const previewMode = (row: PreviewRow): DifficultyMode => row.compare_mode ?? row.difficulty_mode;
 
-/** Uses the production question generator without creating a student session or result. */
+/** Uses the production question generator (same version, same band a student of the class gets) without creating a student session or result. */
 export async function getPreview(env: Env, token: string, req?: Request) {
   if (req) await rateLimitIp(env, req, 'preview', 120, 60);
   const row = await loadPreview(env, token);
   await rateLimit(env, `preview:token:${token}`, 120, 3600);
-  if (row.status === 'completed') return json({ status: 'completed', message: 'آزمایش قبلاً انجام شده است.' });
+  if (row.status === 'completed') return json({ status: 'completed', message: 'آزمایش قبلاً انجام شده است.', comparison: !!row.compare_mode });
+  const mode = previewMode(row);
+  const act = await env.DB.prepare('SELECT a.*, c.grade AS c_grade, c.grade_order AS c_order FROM activities a JOIN classes c ON c.id = a.class_id WHERE a.id = ?').bind(row.activity_id).first<any>();
   return json({
     status: 'ready', session: { id: row.id, startedAt: row.started_at }, game: row.game_type,
-    difficultyMode: row.difficulty_mode, questionCount: row.question_count,
-    startDifficulty: row.difficulty_mode === 'adaptive' ? 1 : MODE_TO_LEVEL[row.difficulty_mode], seed: row.id,
-    pools: buildPools(row.game_type, row.id, levelsFor(row.difficulty_mode), row.question_count, tuningFromRow(row.tuning)),
-    version: 1, preview: true,
+    difficultyMode: mode, questionCount: row.question_count,
+    startDifficulty: mode === 'adaptive' ? 1 : MODE_TO_LEVEL[mode], seed: row.id,
+    pools: buildPools(row.game_type, row.id, levelsFor(mode), row.question_count, tuningFromRow(row.tuning), row.gen_version ?? 1),
+    version: 1, preview: true, comparison: !!row.compare_mode,
+    summary: act ? previewSummary(act, { grade: act.c_grade, grade_order: act.c_order }, row.compare_mode) : null,
   });
 }
 
@@ -133,11 +140,11 @@ export async function completePreview(req: Request, env: Env, token: string) {
   const row = await loadPreview(env, token);
   const body = parse(completeSchema, await readJson(req));
   if (body.sessionId !== row.id) throw new HttpError(404, 'invalid_session', 'جلسه معتبر نیست.');
-  if (row.status === 'completed') return json({ ok: true, duplicate: true });
-  const { metrics } = scoreEvents(row.game_type, body.events, row.id, row.difficulty_mode, row.question_count, row.tuning);
+  if (row.status === 'completed') return json({ ok: true, duplicate: true, comparison: !!row.compare_mode });
+  const { metrics } = scoreEvents(row.game_type, body.events, row.id, previewMode(row), row.question_count, row.tuning, row.gen_version ?? 1);
   if (metrics.sampleCount < 1) throw new HttpError(422, 'no_valid_events', 'نتیجه معتبر نیست.');
   await env.DB.prepare("UPDATE teacher_preview_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'started'").bind(nowIso(), row.id).run();
-  return json({ ok: true, duplicate: false, preview: true, feedback: childFeedback(metrics.accuracy) });
+  return json({ ok: true, duplicate: false, preview: true, comparison: !!row.compare_mode, feedback: childFeedback(metrics.accuracy) });
 }
 
 function scoreEvents(game: GameType, rawEvents: unknown[], seed: string, mode: DifficultyMode, count: number, tuning = 0, genVersion = 1): { metrics: GameMetrics; events: unknown[]; ignored: number } {

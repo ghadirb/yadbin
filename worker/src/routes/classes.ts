@@ -36,7 +36,7 @@ export async function getClass(env: Env, teacherId: string, id: string) {
     `SELECT s.*,
        (SELECT COUNT(*) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS completed,
        (SELECT COUNT(*) FROM activity_students a JOIN activities ac ON ac.id = a.activity_id
-         WHERE a.student_id = s.id AND ac.class_id = cs.class_id AND a.status != 'completed' AND ac.status = 'active' AND ac.archived_at IS NULL
+         WHERE a.student_id = s.id AND ac.class_id = cs.class_id AND a.status != 'completed' AND ac.status = 'active' AND ac.archived_at IS NULL AND ac.publish_state = 'published'
            AND (ac.expires_at IS NULL OR ac.expires_at >= ?)) AS open_count,
        (SELECT MAX(a.completed_at) FROM activity_students a WHERE a.student_id = s.id AND a.status = 'completed') AS last_at,
        (SELECT SUM(CASE WHEN r.accuracy IS NOT NULL THEN r.accuracy * r.sample_count END) FROM game_results r

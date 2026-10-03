@@ -505,7 +505,7 @@ describe('v1.2 class dashboard', () => {
     await t.api('POST', '/api/students', { name: 'دانش‌آموز سه', classId: c2.id }, a.token);
     await runActivity(a.token, c4.id, s1.id, 'memory', memoryEvents(5, 5), { title: 'حافظه الف', level: 'basic', skills: ['memory'] });
     await runActivity(a.token, c4.id, s1.id, 'memory', memoryEvents(5, 5), { title: 'حافظه ب', level: 'basic', skills: ['memory'] });
-    await t.api('POST', '/api/activities', { classId: c2.id, gameType: 'attention', title: 'توجه دوم', level: 'introductory', skills: ['attention'] }, a.token);
+    await t.api('POST', '/api/activities', { classId: c2.id, gameType: 'attention', title: 'توجه دوم', level: 'introductory', skills: ['attention'], requiresPreview: false }, a.token);
     const d = (q = '') => t.api('GET', `/api/v1/dashboard${q}`, undefined, a.token).then((r) => r.data);
     const all = await d();
     expect(all.classes).toHaveLength(2); expect(all.totals.activities).toBe(3);
