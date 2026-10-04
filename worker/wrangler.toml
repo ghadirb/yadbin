@@ -14,8 +14,9 @@ migrations_dir = "migrations"
 ENVIRONMENT = "production"
 # The Student Web is served by this same Worker (static assets below), so the API is same-origin.
 # PLAY_BASE_URL = the public origin of the Worker (workers.dev, or your custom domain later).
-ALLOWED_ORIGIN = "https://yadbin-api.ghadir-baraty3.workers.dev"
-PLAY_BASE_URL = "https://yadbin-api.ghadir-baraty3.workers.dev"
+ALLOWED_ORIGIN = "https://yadbinapp.ir"
+PLAY_BASE_URL = "https://yadbinapp.ir"
+API_BASE_URL = "https://yadbinapp.ir"
 # API_BASE_URL (optional) = origin used for payment callbacks; defaults to PLAY_BASE_URL. Switch both to https://yadbinapp.ir together later.
 
 # Subscription (v1.4). Every number below is optional: the defaults live in src/subscription/config.ts. Change here, no code change.
