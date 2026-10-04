@@ -27,17 +27,22 @@ import com.yadbin.teacher.core.utils.Edu
 import com.yadbin.teacher.domain.models.ClassSummary
 import com.yadbin.teacher.domain.models.ClassesResponse
 import com.yadbin.teacher.domain.models.DashTotals
+import com.yadbin.teacher.domain.models.SubEntitlements
+import com.yadbin.teacher.core.billing.PurchaseCoordinator
+import com.yadbin.teacher.ui.subscription.SubscriptionText
 import com.yadbin.teacher.ui.common.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class DashboardViewModel(private val repo: Repository) : ViewModel() {
+class DashboardViewModel(private val repo: Repository, private val purchases: PurchaseCoordinator? = null) : ViewModel() {
     private val _state = MutableStateFlow<Ui<ClassesResponse>>(Ui.Loading)
     val state: StateFlow<Ui<ClassesResponse>> = _state.asStateFlow()
     private val _totals = MutableStateFlow<DashTotals?>(null)
     val totals: StateFlow<DashTotals?> = _totals.asStateFlow()
+    private val _sub = MutableStateFlow<SubEntitlements?>(null)
+    val sub: StateFlow<SubEntitlements?> = _sub.asStateFlow()
     private var archived = false
     init { refresh() }
 
@@ -49,6 +54,9 @@ class DashboardViewModel(private val repo: Repository) : ViewModel() {
             _state.value = loadUi { if (archived) repo.archivedClasses() else repo.classes() }
             if (!archived) {
                 try { _totals.value = repo.dashboard().data.totals } catch (e: ApiException) { } catch (e: NetworkException) { }
+                // Myket docs: look for paid-but-undelivered purchases at start. Safe to repeat (the server is idempotent).
+                try { purchases?.recover() } catch (e: Exception) { }
+                try { _sub.value = repo.subscription().data.subscription } catch (e: ApiException) { } catch (e: NetworkException) { }
             }
         }
     }
@@ -57,9 +65,10 @@ class DashboardViewModel(private val repo: Repository) : ViewModel() {
 }
 
 @Composable
-fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit, onOverview: () -> Unit = {}, onAssessments: () -> Unit = {}) {
+fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, onLoggedOut: () -> Unit, onOverview: () -> Unit = {}, onAssessments: () -> Unit = {}, onSubscription: () -> Unit = {}) {
     val c = LocalContainer.current
-    val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository) })
+    val vm: DashboardViewModel = viewModel(factory = VmFactory { DashboardViewModel(c.repository, c.purchases) })
+    val sub by vm.sub.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val totals by vm.totals.collectAsStateWithLifecycle()
     val teacherName = remember { c.tokens.teacherName()?.takeIf { it.isNotBlank() } }
@@ -106,6 +115,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (!archivedTab) {
                                 item { GreetingHeader(teacherName, totals) }
+                                sub?.let { e -> item { SubscriptionCard(e, onSubscription) } }
                                 item { SummaryRow(s.data.classes, totals) }
                                 item { SectionTitle("کلاس‌های من") }
                             }
@@ -131,6 +141,17 @@ private fun GreetingHeader(name: String?, totals: DashTotals?) {
             else -> "فعلاً تکلیف باز یا در انتظاری وجود ندارد."
         }
         Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One calm line about the plan (Trial days left / Pro until / Free). Tapping opens «اشتراک من». The server decided this state. */
+@Composable
+private fun SubscriptionCard(e: SubEntitlements, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(SubscriptionText.banner(e), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("اشتراک من", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 

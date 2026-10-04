@@ -110,6 +110,12 @@ class Repository(
     suspend fun deleteAssessment(id: String) = api.deleteAssessment(id)
     suspend fun aiAssessmentDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int) = api.aiAssessmentDraft(prompt, subject, gradeCode, level, count)
 
+    // ---- Subscription / payment (the server is the only source of truth; the cached copy is for display while offline) ----
+    suspend fun subscription(): Loaded<SubscriptionResponse> = cached("subscription", SubscriptionResponse.serializer()) { api.subscription() }
+    suspend fun plans(): Loaded<PlansResponse> = cached("plans", PlansResponse.serializer()) { api.plans() }
+    suspend fun createPayment(planId: String) = api.createPayment(planId)
+    suspend fun confirmMyketPurchase(originalJson: String, signature: String) = api.confirmMyket(originalJson, signature)
+
     private suspend fun <T> cached(key: String, serializer: KSerializer<T>, fetch: suspend () -> T): Loaded<T> {
         try {
             val fresh = fetch()

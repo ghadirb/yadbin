@@ -228,6 +228,14 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun studentReport(id: String): StudentReport = c.request("GET", "/api/reports/student/$id", StudentReport.serializer())
     suspend fun classReport(id: String): ClassReport = c.request("GET", "/api/reports/class/$id", ClassReport.serializer())
+
+    // ---- Subscription / payment (v1.4) ----
+    suspend fun subscription(): SubscriptionResponse = c.request("GET", "/api/subscription", SubscriptionResponse.serializer())
+    suspend fun plans(): PlansResponse = c.request("GET", "/api/plans", PlansResponse.serializer())
+    suspend fun createPayment(planId: String): PaymentCreated =
+        c.request("POST", "/api/payment/create", PaymentCreated.serializer(), j.encodeToString(PaymentCreateRequest.serializer(), PaymentCreateRequest(planId)))
+    suspend fun confirmMyket(originalJson: String, signature: String): ConfirmResponse =
+        c.request("POST", "/api/payment/myket/confirm", ConfirmResponse.serializer(), j.encodeToString(MyketConfirmRequest.serializer(), MyketConfirmRequest(originalJson, signature)))
 }
 
 @kotlinx.serialization.Serializable

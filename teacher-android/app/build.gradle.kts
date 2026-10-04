@@ -22,6 +22,19 @@ android {
             (project.findProperty("API_BASE_URL") as String?) ?: "http://10.0.2.2:8787"
         }
         buildConfigField("String", "API_BASE_URL", "\"${apiBase.trimEnd('/')}\"")
+
+        // Myket in-app purchase (docs/payments.md). The PUBLIC key of the app (not a secret, but Myket asks to keep it out of plain strings):
+        // pass -PMYKET_PUBLIC_KEY=... or env MYKET_PUBLIC_KEY. Empty = billing disabled in this build ("coming soon" in the UI).
+        // It is stored XOR-masked (hex) and rebuilt at run time (core/billing/KeyMask.kt). The Access Token is NEVER in the app: it lives only in the Worker.
+        val marketApplicationId = "ir.mservices.market"
+        val marketBindAddress = "ir.mservices.market.InAppBillingService.BIND"
+        manifestPlaceholders["marketApplicationId"] = marketApplicationId
+        manifestPlaceholders["marketBindAddress"] = marketBindAddress
+        manifestPlaceholders["marketPermission"] = "$marketApplicationId.BILLING"
+        val myketKey = (System.getenv("MYKET_PUBLIC_KEY") ?: "").ifBlank { (project.findProperty("MYKET_PUBLIC_KEY") as String?) ?: "" }.trim()
+        val mask = "com.yadbin.teacher".toByteArray()
+        val maskedKey = myketKey.toByteArray().mapIndexed { i, b -> "%02x".format((b.toInt() xor mask[i % mask.size].toInt()) and 0xff) }.joinToString("")
+        buildConfigField("String", "IAB_KEY_MASKED", "\"$maskedKey\"")
     }
 
     buildTypes {
@@ -75,6 +88,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.security:security-crypto:1.0.0")
     implementation("com.google.zxing:core:3.5.3")
+    // Version pinned to the one in the Myket docs.
+    implementation("com.github.myketstore:myket-billing-client:1.6")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

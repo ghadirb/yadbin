@@ -25,6 +25,11 @@ import com.yadbin.teacher.ui.classes.CreateClassScreen
 import com.yadbin.teacher.ui.common.LocalContainer
 import com.yadbin.teacher.ui.dashboard.DashboardScreen
 import com.yadbin.teacher.ui.reports.StudentReportScreen
+import com.yadbin.teacher.ui.subscription.SubscriptionScreen
+import com.yadbin.teacher.ui.subscription.UpgradeScreen
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 
 object Routes {
     const val SPLASH = "splash"
@@ -41,6 +46,8 @@ object Routes {
     const val OVERVIEW = "overview"
     const val ASSESSMENTS = "assessments"
     const val ASSESSMENT = "assessment/{id}"
+    const val SUBSCRIPTION = "subscription"
+    const val UPGRADE = "upgrade"
 }
 
 private fun NavHostController.toLoginClearingStack() {
@@ -55,6 +62,18 @@ fun AppNav() {
 
     // Token rejected by the server -> back to Login.
     LaunchedEffect(expired) { if (expired) nav.toLoginClearingStack() }
+
+    // Server refused something because a Free-plan limit was reached: say so in the server's words and offer the upgrade screen.
+    val limitMessage by container.limitMessage.collectAsStateWithLifecycle()
+    limitMessage?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { container.limitMessage.value = null },
+            title = { Text("به سقف پلن رایگان رسیدید") },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { container.limitMessage.value = null; nav.navigate(Routes.UPGRADE) }) { Text("مشاهده پلن‌ها") } },
+            dismissButton = { TextButton(onClick = { container.limitMessage.value = null }) { Text("بعداً") } },
+        )
+    }
 
     NavHost(navController = nav, startDestination = Routes.SPLASH) {
         composable(Routes.SPLASH) {
@@ -87,6 +106,7 @@ fun AppNav() {
                 onCreateClass = { nav.navigate(Routes.CREATE_CLASS) },
                 onOverview = { nav.navigate(Routes.OVERVIEW) },
                 onAssessments = { nav.navigate(Routes.ASSESSMENTS) },
+                onSubscription = { nav.navigate(Routes.SUBSCRIPTION) },
                 onLoggedOut = { nav.toLoginClearingStack() },
             )
         }
@@ -132,6 +152,12 @@ fun AppNav() {
         composable(Routes.ASSESSMENT) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
             AssessmentScreen(assessmentId = id, onBack = { nav.popBackStack() }, onOpenAssessment = { nav.navigate("assessment/$it") })
+        }
+        composable(Routes.SUBSCRIPTION) {
+            SubscriptionScreen(onBack = { nav.popBackStack() }, onUpgrade = { nav.navigate(Routes.UPGRADE) })
+        }
+        composable(Routes.UPGRADE) {
+            UpgradeScreen(onBack = { nav.popBackStack() })
         }
         composable(Routes.OVERVIEW) {
             OverviewScreen(onBack = { nav.popBackStack() }, onOpenClass = { nav.navigate("class/$it") })
