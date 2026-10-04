@@ -1,0 +1,29 @@
+name: Domain check (yadbinapp.ir)
+
+# Manual, read-only: reports whether the domain is an ACTIVE zone in this Cloudflare account and
+# whether the Worker already has a custom domain. Changes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: Domain to check
+        default: yadbinapp.ir
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Zone status
+        run: |
+          set -e
+          D="${{ inputs.domain }}"
+          Z=$(curl -sS -H "Authorization: Bearer $CF" "https://api.cloudflare.com/client/v4/zones?name=$D")
+          echo "$Z" | jq '{success, errors, zones: [.result[]? | {name, status, name_servers, original_name_servers}]}'
+          N=$(echo "$Z" | jq '.result | length')
+          if [ "$N" = "0" ]; then echo "::warning::$D is NOT a zone in this Cloudflare account yet (add the site, then change the NS at the registrar)"; fi
+      - name: Worker custom domains
+        run: |
+          A=$(curl -sS -H "Authorization: Bearer $CF" https://api.cloudflare.com/client/v4/accounts | jq -r '.result[0].id')
+          curl -sS -H "Authorization: Bearer $CF" "https://api.cloudflare.com/client/v4/accounts/$A/workers/domains" | jq '{success, errors, domains: [.result[]? | {hostname, service, zone_name}]}'
