@@ -34,11 +34,11 @@ export function parseMyketPurchase(originalJson: string): MyketPurchase | null {
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
   const purchaseToken = str(o.purchaseToken) || str(o.token);
   const productId = str(o.productId);
-  if (!purchaseToken || !productId) return null;
+  if (!purchaseToken || !productId || !Number.isInteger(o.purchaseState)) return null;
   return {
     orderId: str(o.orderId) || null, packageName: str(o.packageName), productId,
     purchaseTime: typeof o.purchaseTime === 'number' ? o.purchaseTime : null,
-    purchaseState: typeof o.purchaseState === 'number' ? o.purchaseState : 0,
+    purchaseState: o.purchaseState,
     developerPayload: str(o.developerPayload), purchaseToken,
   };
 }
