@@ -128,7 +128,7 @@ export async function completePreview(req: Request, env: Env, token: string): Pr
   const items = qs.map((q) => {
     const g = gradeAnswer(q, given.get(q.id)?.answer);
     if (!g.answered) unanswered++; else if (g.correct) correct++;
-    return { questionId: q.id, position: q.position, answered: g.answered, isCorrect: g.answered && g.correct, correctAnswer: q.type === 'fill_blank' ? (q.correct as string[]).join(' / ') : q.correct, explanation: q.explanation };
+    return { questionId: q.id, position: q.position, answered: g.answered, isCorrect: g.answered && g.correct, correctAnswer: q.type === 'fill_blank' ? (q.correct as string[]).join(' / ') : q.correct, explanation: q.explanation, sourceReference: q.sourceReference ?? null };
   });
   // Only valid for the revision that ran: if the teacher edited in the meantime the session row is gone and nothing is marked.
   await env.DB.prepare("UPDATE assessment_preview_sessions SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'started' AND content_rev = (SELECT content_rev FROM assessments WHERE id = ?)").bind(nowIso(), row.id, row.assessment_id).run();

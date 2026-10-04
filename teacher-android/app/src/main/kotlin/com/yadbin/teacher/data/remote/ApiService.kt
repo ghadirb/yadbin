@@ -226,6 +226,55 @@ class ApiService(private val c: ApiClient) {
         return c.request("POST", "/api/ai/assessment-draft", AssessmentDetail.serializer(), body)
     }
 
+    // ---- Content sources (کتاب‌ها و منابع درسی) — private to the teacher; the server answers 404 for anything that is not theirs ----
+    suspend fun contentSources(): ContentSourceList = c.request("GET", "/api/content-sources", ContentSourceList.serializer())
+    suspend fun contentSource(id: String): ContentSourceDetail = c.request("GET", "/api/content-sources/$id", ContentSourceDetail.serializer())
+    /** [fileType] = pdf | docx | txt | paste. Pasted text ([text]) is processed in the same request; a file is sent afterwards with [processContentSource]. */
+    suspend fun createContentSource(title: String, subject: String?, gradeCode: String?, description: String?, fileType: String, originalFileName: String?, text: String?): ContentSourceDetail {
+        val body = buildJsonObject {
+            put("title", title.trim()); put("fileType", fileType)
+            subject?.trim()?.takeIf { it.isNotEmpty() }?.let { put("subject", it) }
+            gradeCode?.let { put("gradeCode", it) }
+            description?.trim()?.takeIf { it.isNotEmpty() }?.let { put("description", it) }
+            originalFileName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("originalFileName", it.take(200)) }
+            if (text != null) put("text", text)
+        }.toString()
+        return c.request("POST", "/api/content-sources", ContentSourceDetail.serializer(), body, timeoutSeconds = 90)
+    }
+    /** Every field is sent (null clears subject / grade / description) so the edit form is the single source of truth. */
+    suspend fun updateContentSource(id: String, title: String, subject: String?, gradeCode: String?, description: String?): ContentSourceDetail {
+        val body = buildJsonObject {
+            put("title", title.trim())
+            put("subject", subject?.trim()?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("gradeCode", gradeCode?.let { JsonPrimitive(it) } ?: JsonNull)
+            put("description", description?.trim()?.ifBlank { null }?.let { JsonPrimitive(it) } ?: JsonNull)
+        }.toString()
+        return c.request("PUT", "/api/content-sources/$id", ContentSourceDetail.serializer(), body)
+    }
+    suspend fun deleteContentSource(id: String) { c.request("DELETE", "/api/content-sources/$id", OkResponse.serializer()) }
+    /** Sends the raw file. The server reads the text and drops the file (only the extracted text is stored). */
+    suspend fun processContentSource(id: String, bytes: ByteArray): ContentSourceDetail =
+        c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), rawBody = bytes, timeoutSeconds = 90)
+    suspend fun contentSourceSection(id: String, sectionId: String): ContentSectionText =
+        c.request("GET", "/api/content-sources/$id/sections/$sectionId", ContentSectionText.serializer())
+    /** AI makes a DRAFT from the selected part of the teacher's book only (never published). No student data is sent. */
+    suspend fun aiAssessmentDraftFromSource(s: SourceDraftSpec): SourceDraftResult {
+        val body = buildJsonObject {
+            put("sourceId", s.sourceId); put("questionCount", s.questionCount)
+            put("questionTypes", JsonArray(s.questionTypes.map { JsonPrimitive(it) }))
+            if (s.wholeSource) put("wholeSource", true)
+            else if (s.sectionIds.isNotEmpty()) put("sectionIds", JsonArray(s.sectionIds.map { JsonPrimitive(it) }))
+            if (s.rangeFrom != null && s.rangeTo != null) put("chunkRange", buildJsonObject { put("from", s.rangeFrom); put("to", s.rangeTo) })
+            s.title?.trim()?.takeIf { it.isNotEmpty() }?.let { put("title", it) }
+            s.subject?.trim()?.takeIf { it.isNotEmpty() }?.let { put("subject", it) }
+            s.gradeCode?.let { put("gradeCode", it) }
+            s.level?.let { put("level", it) }
+            s.minutes?.let { put("suggestedMinutes", it) }
+            s.notes?.trim()?.takeIf { it.isNotEmpty() }?.let { put("notes", it) }
+        }.toString()
+        return c.request("POST", "/api/ai/assessment-draft-from-source", SourceDraftResult.serializer(), body, timeoutSeconds = 120)
+    }
+
     suspend fun studentReport(id: String): StudentReport = c.request("GET", "/api/reports/student/$id", StudentReport.serializer())
     suspend fun classReport(id: String): ClassReport = c.request("GET", "/api/reports/class/$id", ClassReport.serializer())
 

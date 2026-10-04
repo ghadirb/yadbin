@@ -110,6 +110,17 @@ class Repository(
     suspend fun deleteAssessment(id: String) = api.deleteAssessment(id)
     suspend fun aiAssessmentDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int) = api.aiAssessmentDraft(prompt, subject, gradeCode, level, count)
 
+    // ---- Content sources (کتاب‌ها و منابع درسی): reads work offline from the last saved copy; writes and AI always need the network ----
+    suspend fun contentSources(): Loaded<ContentSourceList> = cached("sources", ContentSourceList.serializer()) { api.contentSources() }
+    suspend fun contentSource(id: String): Loaded<ContentSourceDetail> = cached("source:$id", ContentSourceDetail.serializer()) { api.contentSource(id) }
+    suspend fun createContentSource(title: String, subject: String?, gradeCode: String?, description: String?, fileType: String, originalFileName: String?, text: String?) =
+        api.createContentSource(title, subject, gradeCode, description, fileType, originalFileName, text)
+    suspend fun updateContentSource(id: String, title: String, subject: String?, gradeCode: String?, description: String?) = api.updateContentSource(id, title, subject, gradeCode, description)
+    suspend fun deleteContentSource(id: String) = api.deleteContentSource(id)
+    suspend fun processContentSource(id: String, bytes: ByteArray) = api.processContentSource(id, bytes)
+    suspend fun contentSourceSection(id: String, sectionId: String) = api.contentSourceSection(id, sectionId)
+    suspend fun aiAssessmentDraftFromSource(spec: SourceDraftSpec) = api.aiAssessmentDraftFromSource(spec)
+
     // ---- Subscription / payment (the server is the only source of truth; the cached copy is for display while offline) ----
     suspend fun subscription(): Loaded<SubscriptionResponse> = cached("subscription", SubscriptionResponse.serializer()) { api.subscription() }
     suspend fun plans(): Loaded<PlansResponse> = cached("plans", PlansResponse.serializer()) { api.plans() }

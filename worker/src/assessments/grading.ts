@@ -48,7 +48,9 @@ export const questionSchema = z.discriminatedUnion('type', [
 export type QuestionInput = z.infer<typeof questionSchema>;
 
 /** Stored question (as read from the DB), already decoded. */
-export interface StoredQuestion { id: string; position: number; type: QuestionType; text: string; options: string[] | null; correct: number | boolean | string[]; explanation: string | null }
+export interface StoredQuestion { id: string; position: number; type: QuestionType; text: string; options: string[] | null; correct: number | boolean | string[]; explanation: string | null;
+  /** Origin in a teacher's book/source (only for questions made from a source). Never shown to students. */
+  sourceId?: string | null; sectionId?: string | null; chunkId?: string | null; pageNumber?: number | null; sourceReference?: string | null }
 
 export function toColumns(q: QuestionInput) {
   return {
@@ -58,7 +60,8 @@ export function toColumns(q: QuestionInput) {
   };
 }
 export function fromRow(r: any): StoredQuestion {
-  return { id: r.id, position: r.position, type: r.question_type, text: r.text, options: r.options_json ? JSON.parse(r.options_json) : null, correct: JSON.parse(r.correct_json), explanation: r.explanation ?? null };
+  return { id: r.id, position: r.position, type: r.question_type, text: r.text, options: r.options_json ? JSON.parse(r.options_json) : null, correct: JSON.parse(r.correct_json), explanation: r.explanation ?? null,
+    sourceId: r.source_id ?? null, sectionId: r.section_id ?? null, chunkId: r.chunk_id ?? null, pageNumber: r.page_number ?? null, sourceReference: r.source_reference ?? null };
 }
 
 /** What a student (or a preview) may see: never the answer, never the explanation. */
@@ -66,6 +69,7 @@ export const studentView = (q: StoredQuestion) => ({ id: q.id, type: q.type, tex
 /** What the teacher sees in the editor. */
 export const teacherView = (q: StoredQuestion) => ({
   id: q.id, position: q.position, type: q.type, typeLabel: QUESTION_TYPE_LABELS_FA[q.type], text: q.text, options: q.options, explanation: q.explanation,
+  sourceReference: q.sourceReference ?? null, sourcePage: q.pageNumber ?? null,
   ...(q.type === 'fill_blank' ? { answers: q.correct as string[] } : { correct: q.correct }),
 });
 

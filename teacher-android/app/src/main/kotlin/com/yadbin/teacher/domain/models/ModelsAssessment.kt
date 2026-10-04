@@ -24,6 +24,9 @@ import kotlinx.serialization.json.JsonElement
     val previewFeedback: String? = null,
     val publishedAt: String? = null,
     val updatedAt: String = "",
+    /** Only for assessments made from a teacher's book/source. [sourceTitle] is a snapshot, so it survives deleting the source. */
+    val sourceId: String? = null,
+    val sourceTitle: String? = null,
 )
 
 @Serializable data class AssessmentList(val assessments: List<AssessmentInfo> = emptyList(), val filter: String = "all")
@@ -39,6 +42,9 @@ import kotlinx.serialization.json.JsonElement
     val explanation: String? = null,
     val correct: JsonElement? = null,
     val answers: List<String>? = null,
+    /** Readable «منبع سؤال» (e.g. «فصل اول، درس ۲، صفحه ۱۴») built by the server; null for hand-written questions. Never sent to students. */
+    val sourceReference: String? = null,
+    val sourcePage: Int? = null,
 )
 
 @Serializable data class AssessmentVersion(val id: String, val version: Int = 1, val status: String = "draft")
@@ -60,7 +66,7 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable data class AssessmentQuestionStat(
     val questionId: String, val position: Int = 0, val typeLabel: String = "", val text: String = "",
-    val correct: Int = 0, val incorrect: Int = 0, val unanswered: Int = 0, val percentCorrect: Double? = null,
+    val correct: Int = 0, val incorrect: Int = 0, val unanswered: Int = 0, val percentCorrect: Double? = null, val sourceReference: String? = null,
 )
 
 /** Test analysis only: no names, no ranking. */
@@ -70,6 +76,7 @@ import kotlinx.serialization.json.JsonElement
     val averagePercent: Double? = null, val highestPercent: Double? = null, val lowestPercent: Double? = null, val averageMinutes: Double? = null,
     val questions: List<AssessmentQuestionStat> = emptyList(),
     val notice: String = "",
+    val sourceTitle: String? = null,
 )
 
 @Serializable data class StudentAssessmentRow(

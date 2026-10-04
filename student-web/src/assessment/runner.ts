@@ -11,7 +11,7 @@ export interface AssessmentState {
   kind: 'assessment'; sessionId: string; assessment: AssessmentInfo; index: number; answers: Record<string, GivenAnswer>;
   startedAtMs: number; activeMs: number; finished: boolean; preview?: boolean;
 }
-export interface PreviewResult { total: number; correct: number; unanswered: number; percent: number; items: { questionId: string; position: number; answered: boolean; isCorrect: boolean; correctAnswer: unknown; explanation: string | null }[] }
+export interface PreviewResult { total: number; correct: number; unanswered: number; percent: number; items: { questionId: string; position: number; answered: boolean; isCorrect: boolean; correctAnswer: unknown; explanation: string | null; sourceReference?: string | null }[] }
 
 export interface AssessmentUi {
   intro(a: AssessmentInfo, preview: boolean): Promise<void>;

@@ -8,6 +8,8 @@ import * as play from './routes/play';
 import * as ap from './routes/assessment-play';
 import * as as_ from './routes/assessments';
 import { assessmentDraft } from './ai/assessment-draft';
+import { assessmentDraftFromSource } from './ai/assessment-from-source';
+import * as cs from './routes/content-sources';
 import * as reports from './routes/reports';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
@@ -76,6 +78,8 @@ add('POST', '/api/preview/:token/complete', false, async (req, env, p) => (await
 add('GET', '/api/assessments', true, (req, env, _p, t) => as_.listAssessments(req, env, t));
 add('POST', '/api/assessments', true, (req, env, _p, t) => as_.createAssessment(req, env, t));
 add('POST', '/api/ai/assessment-draft', true, (req, env, _p, t) => assessmentDraft(req, env, t));
+// Source-grounded draft (آزمون از روی کتاب/منبع): same Draft → Preview → Publish workflow, same AI entitlement and usage counter.
+add('POST', '/api/ai/assessment-draft-from-source', true, (req, env, _p, t) => assessmentDraftFromSource(req, env, t));
 add('GET', '/api/assessments/:id', true, (_r, env, p, t) => as_.getAssessment(env, t, p.id));
 add('PUT', '/api/assessments/:id', true, (req, env, p, t) => as_.updateAssessment(req, env, t, p.id));
 add('DELETE', '/api/assessments/:id', true, (_r, env, p, t) => as_.deleteAssessment(env, t, p.id));
@@ -94,6 +98,16 @@ add('POST', '/api/assessments/:id/publish', true, (req, env, p, t) => as_.publis
 add('POST', '/api/assessments/:id/assign', true, (req, env, p, t) => as_.assignAssessment(req, env, t, p.id));
 add('GET', '/api/assessments/:id/report', true, (_r, env, p, t) => as_.assessmentReport(env, t, p.id));
 add('GET', '/api/students/:id/assessments', true, (_r, env, p, t) => as_.studentAssessments(env, t, p.id));
+
+// Content Sources (کتاب‌ها و منابع درسی, v1.5) — private to the owning teacher; a foreign id looks exactly like a missing one (404).
+add('POST', '/api/content-sources', true, (req, env, _p, t) => cs.createSource(req, env, t));
+add('GET', '/api/content-sources', true, (req, env, _p, t) => cs.listSources(req, env, t));
+add('GET', '/api/content-sources/:id', true, (_r, env, p, t) => cs.getSource(env, t, p.id));
+add('PUT', '/api/content-sources/:id', true, (req, env, p, t) => cs.updateSource(req, env, t, p.id));
+add('DELETE', '/api/content-sources/:id', true, (_r, env, p, t) => cs.deleteSource(env, t, p.id));
+add('POST', '/api/content-sources/:id/process', true, (req, env, p, t) => cs.processSourceRoute(req, env, t, p.id));
+add('GET', '/api/content-sources/:id/sections', true, (_r, env, p, t) => cs.listSections(env, t, p.id));
+add('GET', '/api/content-sources/:id/sections/:sectionId', true, (_r, env, p, t) => cs.getSection(env, t, p.id, p.sectionId));
 
 // Subscription / Trial / payments (v1.4). Access is decided server-side only (see subscription/entitlements.ts).
 add('GET', '/api/subscription', true, (_r, env, _p, t) => sub.getSubscription(env, t));

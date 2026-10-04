@@ -27,6 +27,9 @@ import com.yadbin.teacher.ui.dashboard.DashboardScreen
 import com.yadbin.teacher.ui.reports.StudentReportScreen
 import com.yadbin.teacher.ui.subscription.SubscriptionScreen
 import com.yadbin.teacher.ui.subscription.UpgradeScreen
+import com.yadbin.teacher.ui.sources.SourcesScreen
+import com.yadbin.teacher.ui.sources.SourceDetailScreen
+import com.yadbin.teacher.ui.sources.SourceQuizScreen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +51,9 @@ object Routes {
     const val ASSESSMENT = "assessment/{id}"
     const val SUBSCRIPTION = "subscription"
     const val UPGRADE = "upgrade"
+    const val SOURCES = "sources"
+    const val SOURCE = "source/{id}"
+    const val SOURCE_QUIZ = "sourceQuiz/{id}"
 }
 
 private fun NavHostController.toLoginClearingStack() {
@@ -106,6 +112,7 @@ fun AppNav() {
                 onCreateClass = { nav.navigate(Routes.CREATE_CLASS) },
                 onOverview = { nav.navigate(Routes.OVERVIEW) },
                 onAssessments = { nav.navigate(Routes.ASSESSMENTS) },
+                onSources = { nav.navigate(Routes.SOURCES) },
                 onSubscription = { nav.navigate(Routes.SUBSCRIPTION) },
                 onLoggedOut = { nav.toLoginClearingStack() },
             )
@@ -145,6 +152,17 @@ fun AppNav() {
                 // the draft is handed to the (editable) create form; the AI screen leaves the stack so Back from the form returns to the class
                 onUseDraft = { nav.navigate("newActivity/$classId") { popUpTo(Routes.AI_BUILDER) { inclusive = true } } },
             )
+        }
+        composable(Routes.SOURCES) {
+            SourcesScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate("source/$it") }, onMakeQuiz = { })
+        }
+        composable(Routes.SOURCE) { e ->
+            val id = e.arguments?.getString("id") ?: return@composable
+            SourceDetailScreen(sourceId = id, onBack = { nav.popBackStack() }, onMakeQuiz = { nav.navigate("sourceQuiz/$it") })
+        }
+        composable(Routes.SOURCE_QUIZ) { e ->
+            val id = e.arguments?.getString("id") ?: return@composable
+            SourceQuizScreen(sourceId = id, onBack = { nav.popBackStack() }, onCreated = { assessmentId -> nav.navigate("assessment/$assessmentId") { popUpTo(Routes.SOURCE_QUIZ) { inclusive = true } } })
         }
         composable(Routes.ASSESSMENTS) {
             AssessmentsScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate("assessment/$it") })

@@ -38,6 +38,7 @@ export function assessmentDto(a: any, extra: { questionCount?: number; assigned?
     gradeCode: a.grade_code ?? null, gradeLabel: g?.label ?? null, level: a.level ?? null, levelLabel: levelLabel(a.level),
     suggestedMinutes: a.suggested_minutes ?? null, status: a.status, statusLabel: STATUS_LABELS_FA[a.status] ?? a.status,
     questionCount: extra.questionCount ?? 0, assigned: extra.assigned ?? 0, completed: extra.completed ?? 0,
+    sourceId: a.source_id ?? null, sourceTitle: a.source_title ?? null,
     previewedAt: a.previewed_at ?? null, previewFeedback: a.preview_feedback ?? null, teacherApprovedAt: a.teacher_approved_at ?? null,
     createdAt: a.created_at, updatedAt: a.updated_at, publishedAt: a.published_at ?? null, archivedAt: a.archived_at ?? null,
   };
@@ -81,10 +82,11 @@ function invalidate(env: Env, a: any, now: string) {
     env.DB.prepare('DELETE FROM assessment_preview_sessions WHERE assessment_id = ?').bind(a.id),
   ];
 }
-const insertQuestion = (env: Env, assessmentId: string, id: string, position: number, q: QuestionInput, now: string, source: string | null = null) => {
+const insertQuestion = (env: Env, assessmentId: string, id: string, position: number, q: QuestionInput, now: string, source: string | null = null, origin: StoredQuestion | null = null) => {
   const c = toColumns(q);
-  return env.DB.prepare('INSERT INTO assessment_questions (id,assessment_id,position,question_type,text,options_json,correct_json,explanation,source_question_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .bind(id, assessmentId, position, c.type, c.text, c.options, c.correct, c.explanation, source, now, now);
+  // origin = the question this one is copied from: its source reference (book / section / page) travels with the copy
+  return env.DB.prepare('INSERT INTO assessment_questions (id,assessment_id,position,question_type,text,options_json,correct_json,explanation,source_question_id,created_at,updated_at,source_id,section_id,chunk_id,page_number,source_reference) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(id, assessmentId, position, c.type, c.text, c.options, c.correct, c.explanation, source, now, now, origin?.sourceId ?? null, origin?.sectionId ?? null, origin?.chunkId ?? null, origin?.pageNumber ?? null, origin?.sourceReference ?? null);
 };
 const renumber = (env: Env, assessmentId: string, ids: string[]) => ids.map((qid, i) => env.DB.prepare('UPDATE assessment_questions SET position = ? WHERE id = ? AND assessment_id = ?').bind(i + 1, qid, assessmentId));
 
@@ -170,9 +172,9 @@ export async function duplicateAssessment(env: Env, teacherId: string, id: strin
   const qs = await loadQuestions(env.DB, id);
   const nid = newId(), now = nowIso();
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(nid, teacherId, nid, 1, `کپی ${a.title}`.slice(0, 100), a.description, a.subject, a.grade_code, a.level, a.suggested_minutes, 'draft', now, now),
-    ...qs.map((q, i) => insertQuestion(env, nid, newId(), i + 1, asInput(q), now, q.id)),
+    env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at,source_id,source_title) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(nid, teacherId, nid, 1, `کپی ${a.title}`.slice(0, 100), a.description, a.subject, a.grade_code, a.level, a.suggested_minutes, 'draft', now, now, a.source_id ?? null, a.source_title ?? null),
+    ...qs.map((q, i) => insertQuestion(env, nid, newId(), i + 1, asInput(q), now, q.id, q)),
   ]);
   return detail(env, teacherId, nid, 201);
 }
@@ -187,9 +189,9 @@ export async function newAssessmentVersion(env: Env, teacherId: string, id: stri
   const max = (await env.DB.prepare('SELECT MAX(version) AS v FROM assessments WHERE root_id = ?').bind(a.root_id).first<{ v: number }>())?.v ?? a.version;
   const nid = newId(), now = nowIso();
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(nid, teacherId, a.root_id, max + 1, a.title, a.description, a.subject, a.grade_code, a.level, a.suggested_minutes, 'draft', now, now),
-    ...qs.map((q, i) => insertQuestion(env, nid, newId(), i + 1, asInput(q), now, q.id)),
+    env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at,source_id,source_title) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(nid, teacherId, a.root_id, max + 1, a.title, a.description, a.subject, a.grade_code, a.level, a.suggested_minutes, 'draft', now, now, a.source_id ?? null, a.source_title ?? null),
+    ...qs.map((q, i) => insertQuestion(env, nid, newId(), i + 1, asInput(q), now, q.id, q)),
   ]);
   return detail(env, teacherId, nid, 201);
 }
@@ -252,7 +254,7 @@ export async function duplicateQuestion(env: Env, teacherId: string, id: string,
   if (all.length >= MAX_QUESTIONS) throw new HttpError(409, 'too_many_questions', `هر آزمون حداکثر ${MAX_QUESTIONS} سؤال دارد.`);
   const nid = newId(), now = nowIso(), ids = all.map((q) => q.id);
   ids.splice(ids.indexOf(qid) + 1, 0, nid);
-  await env.DB.batch([insertQuestion(env, id, nid, ids.indexOf(nid) + 1, asInput(src), now, src.id), ...renumber(env, id, ids), ...invalidate(env, a, now)]);
+  await env.DB.batch([insertQuestion(env, id, nid, ids.indexOf(nid) + 1, asInput(src), now, src.id, src), ...renumber(env, id, ids), ...invalidate(env, a, now)]);
   return detail(env, teacherId, id, 201);
 }
 
@@ -375,7 +377,7 @@ export async function assessmentReport(env: Env, teacherId: string, id: string) 
   return json({
     assessment: assessmentDto(a, c),
     participants: n, assigned: c.assigned, started: c.touched, notFinished: Math.max(0, c.assigned - c.completed),
-    sufficientData: n > 0,
+    sufficientData: n > 0, sourceTitle: a.source_title ?? null,
     averagePercent: n ? r1(res.results.reduce((t, r) => t + r.percent, 0) / n) : null,
     averageCorrect: n ? r1(res.results.reduce((t, r) => t + r.correct, 0) / n) : null,
     highestPercent: n ? Math.max(...res.results.map((r) => r.percent)) : null,
@@ -383,7 +385,7 @@ export async function assessmentReport(env: Env, teacherId: string, id: string) 
     averageMinutes: durations.length ? r1(durations.reduce((t, d) => t + d, 0) / durations.length / 60000) : null,
     questions: qs.map((q) => {
       const p = byQ.get(q.id), ok = p?.ok ?? 0, none = p?.none ?? 0, rows = p?.rows_n ?? 0;
-      return { questionId: q.id, position: q.position, type: q.type, typeLabel: QUESTION_TYPE_LABELS_FA[q.type], text: q.text, answered: rows - none, correct: ok, incorrect: rows - none - ok, unanswered: none, percentCorrect: rows ? r1((ok / rows) * 100) : null };
+      return { questionId: q.id, position: q.position, type: q.type, typeLabel: QUESTION_TYPE_LABELS_FA[q.type], text: q.text, answered: rows - none, correct: ok, incorrect: rows - none - ok, unanswered: none, percentCorrect: rows ? r1((ok / rows) * 100) : null, sourceReference: q.sourceReference ?? null };
     }),
     notice: 'این گزارش برای تحلیل خود آزمون است؛ رتبه‌بندی یا مقایسهٔ دانش‌آموزان نمایش داده نمی‌شود.',
   });

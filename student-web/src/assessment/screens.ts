@@ -71,7 +71,8 @@ export function createAssessmentUi(root: HTMLElement, opts: { preview?: boolean 
           const ans = typeof it.correctAnswer === 'boolean' ? (it.correctAnswer ? 'درست' : 'نادرست') : typeof it.correctAnswer === 'number' ? (q?.options?.[it.correctAnswer] ?? '') : String(it.correctAnswer ?? '');
           card.append(h('div', { class: `a-row ${!it.answered ? 'none' : it.isCorrect ? 'ok' : 'bad'}` },
             h('strong', {}, `${fa(i + 1)}. ${!it.answered ? 'بی‌پاسخ' : it.isCorrect ? 'درست' : 'نادرست'}`),
-            h('span', {}, ` — پاسخ صحیح: ${ans}`), it.explanation ? h('p', {}, it.explanation) : null));
+            h('span', {}, ` — پاسخ صحیح: ${ans}`), it.explanation ? h('p', {}, it.explanation) : null,
+            it.sourceReference ? h('p', { class: 'source-ref', 'data-source-ref': '1' }, `منبع سؤال: ${it.sourceReference}`) : null)); // teacher preview only; the student screens never receive it
         });
       }
       card.append(h('p', {}, 'این اجرا در هیچ گزارشی ثبت نشد. به اپ معلم برگردید و بازخورد خود را ثبت کنید.'));
