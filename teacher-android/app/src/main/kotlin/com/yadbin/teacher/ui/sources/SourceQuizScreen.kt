@@ -57,8 +57,8 @@ fun SourceQuizScreen(sourceId: String, onBack: () -> Unit, onCreated: (String) -
     var title by remember { mutableStateOf("") }
     var level by remember { mutableStateOf("medium") }
     var types by remember { mutableStateOf(setOf("multiple_choice")) }
-    error?.let { message -> AlertDialog(onDismissRequest = vm::clearError, title = { Text("ط®ط·ط§") }, text = { Text(message) }, confirmButton = { TextButton(onClick = vm::clearError) { Text("ط¨ط§ط´ظ‡") } }) }
-    Scaffold(topBar = { YadbinTopBar("ط³ط§ط®طھ ط¢ط²ظ…ظˆظ† ط§ط² ظ…ظ†ط¨ط¹", onBack) }) { padding ->
+    error?.let { message -> AlertDialog(onDismissRequest = vm::clearError, title = { Text("خطا") }, text = { Text(message) }, confirmButton = { TextButton(onClick = vm::clearError) { Text("باشه") } }) }
+    Scaffold(topBar = { YadbinTopBar("ساخت آزمون از منبع", onBack) }) { padding ->
         when (val current = state) {
             Ui.Loading -> LoadingBox(Modifier.padding(padding))
             is Ui.Error -> ErrorBox(current.message, onRetry = null)
@@ -69,19 +69,19 @@ fun SourceQuizScreen(sourceId: String, onBack: () -> Unit, onCreated: (String) -
                 val advice = SourceRules.countAdvice(count, selectedChars)
                 LazyColumn(Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 16.dp)) {
                     item { Text(info.title, style = MaterialTheme.typography.headlineSmall) }
-                    item { OutlinedTextField(title, { title = it.take(SourceRules.MAX_TITLE) }, label = { Text("ط¹ظ†ظˆط§ظ† ط¢ط²ظ…ظˆظ† (ط§ط®طھغŒط§ط±غŒ)") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                    item { Text("ظ…ط­ط¯ظˆط¯ظ‡ظ” ظ…طھظ†", style = MaterialTheme.typography.titleMedium) }
-                    item { Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(wholeSource, { wholeSource = it; if (it) selected = emptySet() }); Text("ع©ظ„ ظ…ظ†ط¨ط¹") } }
+                    item { OutlinedTextField(title, { title = it.take(SourceRules.MAX_TITLE) }, label = { Text("عنوان آزمون (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { Text("محدودهٔ متن", style = MaterialTheme.typography.titleMedium) }
+                    item { Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(wholeSource, { wholeSource = it; if (it) selected = emptySet() }); Text("کل منبع") } }
                     if (!wholeSource) items(detail.sections, key = { it.id }) { section -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(section.id in selected, { checked -> selected = if (checked) selected + section.id else selected - section.id }); Text(section.title, modifier = Modifier.weight(1f)); Text("${section.charCount} ظ†ظˆغŒط³ظ‡", style = MaterialTheme.typography.labelSmall) } }
                     item { Text("طھط¹ط¯ط§ط¯ ط³ط¤ط§ظ„: ${count}") }
                     item { Slider(value = count.toFloat(), onValueChange = { count = it.toInt().coerceIn(3, 20) }, valueRange = 3f..20f, steps = 16) }
-                    item { Text("ظ†ظˆط¹ ط³ط¤ط§ظ„") }
+                    item { Text("نوع سؤال") }
                     items(SourceRules.QUESTION_TYPES) { (key, label) -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(key in types, { checked -> types = if (checked) types + key else types - key }); Text(label) } }
-                    item { Text("ط³ط·ط­ ط³ط¤ط§ظ„") }
+                    item { Text("سطح سؤال") }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("easy" to "ط¢ط³ط§ظ†", "medium" to "ظ…طھظˆط³ط·", "hard" to "ط³ط®طھ").forEach { (key, label) -> FilterChip(selected = level == key, onClick = { level = key }, label = { Text(label) }) } } }
                     item { if (!advice.ok) Text(advice.message ?: "ظ…ط­ط¯ظˆط¯ظ‡ظ” ط§ظ†طھط®ط§ط¨â€Œط´ط¯ظ‡ ع©ط§ظپغŒ ظ†غŒط³طھ.", color = MaterialTheme.colorScheme.error) }
-                    item { Button(enabled = advice.ok && types.isNotEmpty() && !busy, onClick = { vm.create(SourceDraftSpec(sourceId = sourceId, sectionIds = selected.toList(), wholeSource = wholeSource, title = title, level = level, questionCount = count, questionTypes = types.toList()), onCreated) }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("ط³ط§ط®طھ ظ¾غŒط´â€Œظ†ظˆغŒط³ ط¢ط²ظ…ظˆظ†") } }
-                    item { Text("ط¢ط²ظ…ظˆظ† ط§ط¨طھط¯ط§ ط¨ظ‡â€Œطµظˆط±طھ ظ¾غŒط´â€Œظ†ظˆغŒط³ ط¨ط§ط² ظ…غŒâ€Œط´ظˆط¯ ظˆ ظ‚ط¨ظ„ ط§ط² ط§ظ†طھط´ط§ط± ظ‚ط§ط¨ظ„ ظˆغŒط±ط§غŒط´ ظˆ ط¨ط§ط²ط¨غŒظ†غŒ ط§ط³طھ.", style = MaterialTheme.typography.bodySmall) }
+                    item { Button(enabled = advice.ok && types.isNotEmpty() && !busy, onClick = { vm.create(SourceDraftSpec(sourceId = sourceId, sectionIds = selected.toList(), wholeSource = wholeSource, title = title, level = level, questionCount = count, questionTypes = types.toList()), onCreated) }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("ساخت پیش‌نویس آزمون") } }
+                    item { Text("آزمون ابتدا به‌صورت پیش‌نویس باز می‌شود و قبل از انتشار قابل ویرایش و بازبینی است.", style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }

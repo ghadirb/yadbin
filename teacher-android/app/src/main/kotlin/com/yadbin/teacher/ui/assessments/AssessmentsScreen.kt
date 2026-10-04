@@ -86,6 +86,7 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     var filter by rememberSaveable { mutableStateOf("all") }
     var showCreate by remember { mutableStateOf(false) }
     var showAi by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = !showCreate && !showAi, onBack = onBack)
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 

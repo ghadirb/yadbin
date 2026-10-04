@@ -36,7 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** What the teacher typed / picked in آ«ط§ظپط²ظˆط¯ظ† ظ…ظ†ط¨ط¹آ». Exactly one of [text] (pasted) and [file] is set. */
+/** What the teacher typed / picked in آ«افزودن منبعآ». Exactly one of [text] (pasted) and [file] is set. */
 data class NewSource(
     val title: String,
     val subject: String?,
@@ -63,7 +63,7 @@ class SourcesViewModel(private val repo: Repository) : ViewModel() {
     fun add(draft: NewSource, onDone: (String) -> Unit) {
         if (_busy.value != null) return
         viewModelScope.launch {
-            _busy.value = if (draft.file != null) "ط¯ط± ط­ط§ظ„ ط§ط±ط³ط§ظ„ ظˆ ط®ظˆط§ظ†ط¯ظ† ظپط§غŒظ„â€¦" else "ط¯ط± ط­ط§ظ„ ط®ظˆط§ظ†ط¯ظ† ظ…طھظ†â€¦"
+            _busy.value = if (draft.file != null) "در حال ارسال و خواندن فایل…" else "در حال خواندن متن…"
             var createdId: String? = null
             try {
                 val file = draft.file
@@ -105,6 +105,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = !showAdd && busy == null, onBack = onBack)
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -117,9 +118,9 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     }
 
     Scaffold(
-        topBar = { YadbinTopBar("ع©طھط§ط¨â€Œظ‡ط§ ظˆ ظ…ظ†ط§ط¨ط¹ ط¯ط±ط³غŒ", onBack) },
+        topBar = { YadbinTopBar("کتاب‌ها و منابع درسی", onBack) },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { showAdd = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("ط§ظپط²ظˆط¯ظ† ظ…ظ†ط¨ط¹") }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { showAdd = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("افزودن منبع") }) },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             when (val s = state) {
@@ -130,14 +131,13 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
                     val list = s.data
                     if (list.sources.isEmpty()) {
                         Spacer(Modifier.height(32.dp))
-                        EmptyState("ظ‡ظ†ظˆط² ع©طھط§ط¨ غŒط§ ظ…ظ†ط¨ط¹غŒ ط§ط¶ط§ظپظ‡ ظ†ع©ط±ط¯ظ‡â€Œط§غŒط¯. ظپط§غŒظ„ PDFطŒ Word غŒط§ ظ…طھظ† ط¯ط±ط³ ط±ط§ ط§ط¶ط§ظپظ‡ ع©ظ†غŒط¯ طھط§ ط¢ط²ظ…ظˆظ† ظپظ‚ط· ط§ط² ط±ظˆغŒ ظ‡ظ…ط§ظ† ط³ط§ط®طھظ‡ ط´ظˆط¯.", "ط§ظپط²ظˆط¯ظ† ط§ظˆظ„غŒظ† ظ…ظ†ط¨ط¹") { showAdd = true }
+                        EmptyState("هنوز کتاب یا منبعی اضافه نکرده‌اید. فایل PDF، Word یا متن درس را اضافه کنید تا آزمون فقط از روی همان ساخته شود.", "افزودن اولین منبع") { showAdd = true }
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            item { NoticeText("ظ…ظ†ط¨ط¹â€Œظ‡ط§ ظپظ‚ط· ط¨ط±ط§غŒ ط´ظ…ط§ ظ‚ط§ط¨ظ„ ظ…ط´ط§ظ‡ط¯ظ‡â€Œط§ظ†ط¯. ط¢ط²ظ…ظˆظ†ظگ ط³ط§ط®طھظ‡â€Œط´ط¯ظ‡ ط§ط² غŒع© ظ…ظ†ط¨ط¹طŒ ظپظ‚ط· ط§ط² ظ…طھظ† ظ‡ظ…ط§ظ† ظ…ظ†ط¨ط¹ ط³ط¤ط§ظ„ ظ…غŒâ€Œع¯غŒط±ط¯ ظˆ ظ‡ظ…غŒط´ظ‡ ظ¾غŒط´â€Œظ†ظˆغŒط³ ط§ط³طھط› ط´ظ…ط§ ط¢ظ† ط±ط§ ط¨ط±ط±ط³غŒ ظˆ طھط£غŒغŒط¯ ظ…غŒâ€Œع©ظ†غŒط¯.") }
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {                            item { NoticeText("منابع فقط برای شما قابل مشاهده‌اند. آزمون ساخته‌شده از یک منبع فقط از متن همان منبع سؤال می‌گیرد و همیشه پیش‌نویس است؛ شما آن را بررسی و تأیید می‌کنید.") }
                             if (list.sources.any { SourceRules.isUsable(it) }) item {
                             }
                             items(list.sources, key = { it.id }) { src -> SourceCard(src) { onOpen(src.id) } }
-                            item { NoticeText("ط­ط¯ط§ع©ط«ط± ${list.limit.fa()} ظ…ظ†ط¨ط¹طŒ ظ‡ط± ظپط§غŒظ„ طھط§ ${list.maxFileMegabytes.toInt().fa()} ظ…ع¯ط§ط¨ط§غŒطھ ظˆ ${list.maxPages.fa()} طµظپط­ظ‡. ط¨ط±ط§غŒ ع©طھط§ط¨ ط¨ط²ط±ع¯â€Œطھط±طŒ ظپطµظ„â€Œظ‡ط§ ط±ط§ ط¬ط¯ط§ع¯ط§ظ†ظ‡ ط§ط¶ط§ظپظ‡ ع©ظ†غŒط¯.") }
+                            item { NoticeText("حداکثر ${list.limit.fa()} منبع، هر فایل تا ${list.maxFileMegabytes.toInt().fa()} مگابایت و ${list.maxPages.fa()} صفحه. برای کتاب بزرگ‌تر، فصل‌ها را جداگانه اضافه کنید.") }
                             item { Spacer(Modifier.height(72.dp)) }
                         }
                     }
@@ -153,7 +153,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     busy?.let { text ->
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("ظ„ط·ظپط§ظ‹ طµط¨ط± ع©ظ†غŒط¯") },
+            title = { Text("لطفاً صبر کنید") },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
@@ -205,28 +205,28 @@ private fun AddSourceDialog(maxMegabytes: Double, onDismiss: () -> Unit, onAdd: 
     val valid = title.trim().length >= 2 && (if (paste) text.isNotBlank() else file != null)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ط§ظپط²ظˆط¯ظ† ع©طھط§ط¨ غŒط§ ظ…ظ†ط¨ط¹") },
+        title = { Text("افزودن کتاب یا منبع") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !paste, onClick = { paste = false }, label = { Text("ظپط§غŒظ„") })
-                    FilterChip(selected = paste, onClick = { paste = true }, label = { Text("ظˆط§ط±ط¯ ع©ط±ط¯ظ† ظ…طھظ†") })
+                    FilterChip(selected = !paste, onClick = { paste = false }, label = { Text("فایل") })
+                    FilterChip(selected = paste, onClick = { paste = true }, label = { Text("وارد کردن متن") })
                 }
-                OutlinedTextField(title, { title = it.take(SourceRules.MAX_TITLE) }, label = { Text("ط¹ظ†ظˆط§ظ† (ظ…ط«ظ„ط§ظ‹ ط±غŒط§ط¶غŒ ط´ط´ظ…)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(subject, { subject = it.take(60) }, label = { Text("ط¯ط±ط³ (ط§ط®طھغŒط§ط±غŒ)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                GradeDropdown("ظ¾ط§غŒظ‡ظ” طھط­طµغŒظ„غŒ (ط§ط®طھغŒط§ط±غŒ)", grade, { grade = it }, allowNone = true)
-                OutlinedTextField(desc, { desc = it.take(500) }, label = { Text("طھظˆط¶غŒط­ (ط§ط®طھغŒط§ط±غŒ)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(title, { title = it.take(SourceRules.MAX_TITLE) }, label = { Text("عنوان (مثلاً ریاضی ششم)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(subject, { subject = it.take(60) }, label = { Text("درس (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                GradeDropdown("پایهٔ تحصیلی (اختیاری)", grade, { grade = it }, allowNone = true)
+                OutlinedTextField(desc, { desc = it.take(500) }, label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth())
                 if (paste) {
                     OutlinedTextField(
-                        text, { text = it }, label = { Text("ظ…طھظ† ط¯ط±ط³ غŒط§ ع©طھط§ط¨") }, minLines = 5, maxLines = 10, modifier = Modifier.fillMaxWidth(),
+                        text, { text = it }, label = { Text("متن درس یا کتاب") }, minLines = 5, maxLines = 10, modifier = Modifier.fillMaxWidth(),
                     )
-                    NoticeText("${text.length.fa()} ظ†ظˆغŒط³ظ‡. ط¹ظ†ظˆط§ظ†â€Œظ‡ط§غŒغŒ ظ…ط«ظ„ آ«ظپطµظ„ ط§ظˆظ„آ» ظˆ آ«ط¯ط±ط³ غ²آ» ط¯ط± ط®ط· ط¬ط¯ط§ ظ†ظˆط´طھظ‡ ط´ظˆظ†ط¯ طھط§ ظپطµظ„ ظˆ ط¯ط±ط³ طھط´ط®غŒطµ ط¯ط§ط¯ظ‡ ط´ظˆط¯.")
+                    NoticeText("${text.length.fa()} نویسه. عنوان‌های فصل و درس را در خط جدا بنویسید تا فصل و درس تشخیص داده شود.")
                 } else {
-                    OutlinedButton(onClick = { launcher.launch(SourceFiles.MIME_TYPES) }, modifier = Modifier.fillMaxWidth()) { Text(if (file != null) "طھط؛غŒغŒط± ظپط§غŒظ„" else "ط§ظ†طھط®ط§ط¨ ظپط§غŒظ„") }
+                    OutlinedButton(onClick = { launcher.launch(SourceFiles.MIME_TYPES) }, modifier = Modifier.fillMaxWidth()) { Text(if (file != null) "تغییر فایل" else "انتخاب فایل") }
                     when (val p = picked) {
-                        is PickResult.Ok -> Text("ظپط§غŒظ„ ط§ظ†طھط®ط§ط¨â€Œط´ط¯ظ‡: ${p.name}", style = MaterialTheme.typography.bodySmall)
+                        is PickResult.Ok -> Text("فایل انتخاب‌شده: ${p.name}", style = MaterialTheme.typography.bodySmall)
                         is PickResult.Bad -> Text(p.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        null -> NoticeText("PDF ظ…طھظ†غŒطŒ Word (ط¨ط§ ظ¾ط³ظˆظ†ط¯ docx) غŒط§ ظ…طھظ† ط³ط§ط¯ظ‡ط› ط­ط¯ط§ع©ط«ط± ${maxMegabytes.toInt().fa()} ظ…ع¯ط§ط¨ط§غŒطھ. PDF ط§ط³ع©ظ†â€Œط´ط¯ظ‡ (ط¹ع©ط³ طµظپط­ظ‡â€Œظ‡ط§) ظ‡ظ†ظˆط² ظ¾ط´طھغŒط¨ط§ظ†غŒ ظ†ظ…غŒâ€Œط´ظˆط¯. ط®ظˆط¯ ظپط§غŒظ„ ظ†ع¯ظ‡ ط¯ط§ط´طھظ‡ ظ†ظ…غŒâ€Œط´ظˆط¯ط› ظپظ‚ط· ظ…طھظ† ط¢ظ† ط°ط®غŒط±ظ‡ ظ…غŒâ€Œط´ظˆط¯.")
+                        null -> NoticeText("PDF متنی، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. PDF اسکن‌شده فعلاً پشتیبانی نمی‌شود. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
                     }
                 }
             }
@@ -237,9 +237,9 @@ private fun AddSourceDialog(maxMegabytes: Double, onDismiss: () -> Unit, onAdd: 
                 onClick = {
                     onAdd(NewSource(title.trim(), subject.ifBlank { null }, grade, desc.ifBlank { null }, if (paste) text else null, if (paste) null else file))
                 },
-            ) { Text("ط§ظپط²ظˆط¯ظ†") }
+            ) { Text("افزودن") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("ط§ظ†طµط±ط§ظپ") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
     )
 }
 
