@@ -116,6 +116,27 @@ describe('reading page images with the vision model', () => {
     expect(r.status).toBe(503);
   });
 
+
+  it('paid vision OCR uses the shared page cache and bills only uncached pages', async () => {
+    const tc = await registerTeacher(t);
+    const now = new Date();
+    await t.db.prepare("INSERT INTO subscriptions (id, teacher_id, plan_id, status, started_at, expires_at, provider, created_at, updated_at) VALUES (?, ?, 'pro_monthly', 'active', ?, ?, 'test', ?, ?)")
+      .bind(crypto.randomUUID(), tc.id, now.toISOString(), new Date(now.getTime() + 86400000).toISOString(), now.toISOString(), now.toISOString()).run();
+    const hash = 'a'.repeat(64);
+    let calls = 0;
+    const body = { images: [jpegB64, jpegB64], batchIndex: 0, pageStart: 8, documentHash: hash };
+    const first = await readPages(asReq(body), { DB: t.db } as any, tc.id, async () => { calls++; return '{"pages":["page 9","page 10"]}'; });
+    expect(first.status).toBe(200); expect(calls).toBe(1);
+    const second = await readPages(asReq(body), { DB: t.db } as any, tc.id, async () => { calls++; return '{"pages":["wrong","wrong"]}'; });
+    expect(second.status).toBe(200); expect(calls).toBe(1); expect((await second.json() as any).cached).toBe(true);
+    expect((await t.db.prepare("SELECT count FROM usage_counters WHERE teacher_id = ? AND feature = 'vision_pages'").bind(tc.id).first<{count:number}>())?.count).toBe(2);
+  });
+
+  it('paid vision OCR is refused for Free accounts', async () => {
+    const tc = await registerTeacher(t);
+    await expect(readPages(asReq({ images: [jpegB64], batchIndex: 0, pageStart: 0, documentHash: 'b'.repeat(64) }), { DB: t.db } as any, tc.id, async () => '{"pages":["x"]}')).rejects.toMatchObject({ status: 403, code: 'VISION_SUBSCRIPTION_REQUIRED' });
+  });
+
   it('parseVisionPages never trusts a reply with a wrong shape', () => {
     expect(parseVisionPages('{"pages":["a","b"]}', 2)).toEqual(['a', 'b']);
     expect(parseVisionPages('{"pages":["a"]}', 2)).toBeNull();

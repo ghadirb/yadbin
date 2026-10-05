@@ -4,13 +4,15 @@ import { extractJson } from './builder';
 import { HttpError, json } from '../utils/http';
 import { rateLimit } from '../utils/ratelimit';
 import { parse } from '../validation/schemas';
-import { consumeAi, requireAi } from '../subscription/gating';
+import { requireVisionSubscription } from '../subscription/gating';
+import { visionPagesPerMonth } from '../subscription/config';
+import { nowIso } from '../utils/ids';
 
 /** Reads PAGE IMAGES of a book (scanned PDF, or a PDF whose fonts give broken text) into plain Persian text.
  *  Stateless: the phone renders a few pages to JPEG, sends them here, gets the text back, assembles the whole book and then creates the source
  *  with that text. Nothing is stored here — not the images, not the text. Only the images + a fixed instruction reach the model: no names, no ids. */
 
-export const VISION = { maxImages: 4, maxImageChars: 600_000, maxBodyBytes: 2_700_000, maxPageChars: 6000, perHour: 80 } as const;
+export const VISION = { maxImages: 4, maxImageChars: 600_000, maxBodyBytes: 2_700_000, maxPageChars: 6000, perHour: 80, defaultPagesPerMonth: 200 } as const;
 const DEFAULT_BASE = 'https://api.avalai.ir/v1';
 const DEFAULT_VISION_MODEL = 'gemini-flash-latest';
 
@@ -19,6 +21,8 @@ const requestSchema = z.object({
     { error: 'تصویر صفحه‌ها ارسال نشده است.' }).min(1, 'تصویر صفحه‌ها ارسال نشده است.').max(VISION.maxImages, `در هر درخواست حداکثر ${VISION.maxImages} صفحه.`),
   /** 0 for the first batch of one book: that batch counts as ONE AI use for the monthly quota (the rest of the book is free of that counter). */
   batchIndex: z.number().int().min(0).max(200).default(0),
+  documentHash: z.string().regex(/^[a-f0-9]{64}$/i, 'هش سند معتبر نیست.').optional(),
+  pageStart: z.number().int().min(0).max(119).optional(),
 });
 
 const SYSTEM = `You are a careful OCR engine for Persian (Farsi) school textbook pages.
@@ -82,12 +86,42 @@ async function readBody(req: Request): Promise<unknown> {
 /** POST /api/content-sources/read-pages  { images: [base64 jpeg…], batchIndex } → { pages: [text…] } */
 export async function readPages(req: Request, env: Env, teacherId: string, provider: VisionProvider = avalaiVision) {
   const b = parse(requestSchema, await readBody(req));
+  const pageStart = b.pageStart ?? 0;
+  const documentHash = b.documentHash?.toLowerCase();
+  if (pageStart + b.images.length > 120) throw new HttpError(400, 'page_range_too_large', 'حداکثر ۱۲۰ صفحه برای خواندن تصویری مجاز است.');
   await rateLimit(env, `src-vision:${teacherId}`, VISION.perHour, 3600);
-  await requireAi(env, teacherId); // free plan quota used up → plain Persian «limit reached» answer
+  if (!documentHash && env.ENVIRONMENT === 'production') throw new HttpError(400, 'document_hash_required', 'هش PDF برای خواندن تصویری لازم است.');
+  if (!documentHash) {
+    // Backward-compatible API clients are still metered by the normal AI quota. The Android app always sends a hash and uses paid OCR.
+    const { requireAi, consumeAi } = await import('../subscription/gating');
+    await requireAi(env, teacherId);
+    const reply = await provider(env, b.images);
+    if (reply === null) throw new HttpError(503, 'ai_unavailable', 'خواندن تصویری PDF فعلاً ممکن نیست. بعداً دوباره امتحان کنید یا متن کتاب را وارد کنید.');
+    const pages = parseVisionPages(reply, b.images.length);
+    if (!pages) throw new HttpError(502, 'ai_bad_output', 'خواندن این صفحه‌ها کامل نشد. دوباره امتحان کنید.');
+    if (b.batchIndex === 0) await consumeAi(env, teacherId);
+    return json({ pages, empty: pages.map((p) => p.length === 0), cached: false });
+  }
+  await requireVisionSubscription(env, teacherId);
+  const cachedRows = await env.DB.prepare('SELECT page_index, text FROM content_source_vision_cache WHERE document_hash = ? AND page_index >= ? AND page_index < ? ORDER BY page_index')
+    .bind(documentHash, pageStart, pageStart + b.images.length).all<{ page_index: number; text: string }>();
+  const cachedMap = new Map((cachedRows.results ?? []).map((r) => [r.page_index, r.text]));
+  if (cachedMap.size === b.images.length) {
+    const pages = Array.from({ length: b.images.length }, (_, i) => cachedMap.get(pageStart + i) ?? '');
+    return json({ pages, empty: pages.map((p) => p.length === 0), cached: true });
+  }
+  const missingCount = b.images.length - cachedMap.size;
+  const usedRow = await env.DB.prepare("SELECT count FROM usage_counters WHERE teacher_id = ? AND feature = 'vision_pages' AND period = ?")
+    .bind(teacherId, new Date().toISOString().slice(0, 7)).first<{ count: number }>();
+  const used = usedRow?.count ?? 0;
+  const limit = visionPagesPerMonth(env);
+  if (used + missingCount > limit) throw new HttpError(403, 'VISION_PAGE_LIMIT_REACHED', 'سهمیهٔ ماهانهٔ خواندن تصویری PDF شما تمام شده است.', { feature: 'vision_ocr', limit, used, upgrade: true });
   const reply = await provider(env, b.images);
-  if (reply === null) throw new HttpError(503, 'ai_unavailable', 'خواندن صفحه‌ها با هوش مصنوعی فعلاً ممکن نیست. کمی بعد دوباره امتحان کنید یا متن کتاب را وارد کنید.');
+  if (reply === null) throw new HttpError(503, 'ai_unavailable', 'خواندن تصویری PDF فعلاً ممکن نیست. بعداً دوباره امتحان کنید یا متن کتاب را وارد کنید.');
   const pages = parseVisionPages(reply, b.images.length);
   if (!pages) throw new HttpError(502, 'ai_bad_output', 'خواندن این صفحه‌ها کامل نشد. دوباره امتحان کنید.');
-  if (b.batchIndex === 0) await consumeAi(env, teacherId);
-  return json({ pages, empty: pages.map((p) => p.length === 0) });
+  const statements = pages.map((text, i) => ({ text, i })).filter(({ i }) => !cachedMap.has(pageStart + i)).map(({ text, i }) => env.DB.prepare('INSERT OR REPLACE INTO content_source_vision_cache (document_hash, page_index, text, created_at) VALUES (?, ?, ?, ?)').bind(documentHash, pageStart + i, text, nowIso()));
+  statements.push(env.DB.prepare(`INSERT INTO usage_counters (teacher_id, feature, period, count) VALUES (?, 'vision_pages', ?, ?) ON CONFLICT(teacher_id, feature, period) DO UPDATE SET count = count + excluded.count`).bind(teacherId, new Date().toISOString().slice(0, 7), missingCount));
+  await env.DB.batch(statements);
+  return json({ pages, empty: pages.map((p) => p.length === 0), cached: false });
 }

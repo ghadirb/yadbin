@@ -6,7 +6,7 @@ import type { Env } from '../env';
  */
 export interface FreeLimits { maxClasses: number | null; maxStudents: number | null; maxAssessments: number | null; aiRequestsPerMonth: number | null }
 
-const DEFAULTS = { TRIAL_DAYS: 7, FREE_MAX_CLASSES: 1, FREE_MAX_STUDENTS: 10, FREE_MAX_ASSESSMENTS: 3, FREE_AI_REQUESTS: 3 };
+const DEFAULTS = { TRIAL_DAYS: 7, FREE_MAX_CLASSES: 1, FREE_MAX_STUDENTS: 10, FREE_MAX_ASSESSMENTS: 3, FREE_AI_REQUESTS: 3, VISION_PAGES_PER_MONTH: 200 };
 
 function num(v: string | undefined, fallback: number): number {
   if (v === undefined || v === '') return fallback;
@@ -29,3 +29,5 @@ export const UNLIMITED: FreeLimits = { maxClasses: null, maxStudents: null, maxA
 
 /** Pending payments older than this are treated as expired transactions. */
 export const PAYMENT_TTL_MIN = 30;
+
+export const visionPagesPerMonth = (env: Env): number => num(env.VISION_PAGES_PER_MONTH, DEFAULTS.VISION_PAGES_PER_MONTH);

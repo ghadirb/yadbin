@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { HttpError } from '../utils/http';
 import { getUserEntitlements, type Entitlements } from './entitlements';
+import { visionPagesPerMonth } from './config';
 
 export type LimitedFeature = 'classes' | 'students' | 'assessments' | 'ai';
 
@@ -73,4 +74,11 @@ export async function consumeAi(env: Env, teacherId: string): Promise<void> {
     `INSERT INTO usage_counters (teacher_id, feature, period, count) VALUES (?1, 'ai', ?2, 1)
        ON CONFLICT(teacher_id, feature, period) DO UPDATE SET count = count + 1`,
   ).bind(teacherId, period()).run();
+}
+
+/** Vision OCR is a paid feature: a Free account must not spend provider credits. Trials do not count as an active subscription. */
+export async function requireVisionSubscription(env: Env, teacherId: string): Promise<Entitlements> {
+  const e = await getUserEntitlements(env, teacherId);
+  if (!e.subscriptionActive) throw new HttpError(403, 'VISION_SUBSCRIPTION_REQUIRED', 'خواندن تصویری PDF فقط با اشتراک فعال قابل استفاده است.', { feature: 'vision_ocr', upgrade: true, plan: e.plan });
+  return e;
 }

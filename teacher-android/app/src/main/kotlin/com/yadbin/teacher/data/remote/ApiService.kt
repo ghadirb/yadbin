@@ -261,8 +261,8 @@ class ApiService(private val c: ApiClient) {
         return c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), body, timeoutSeconds = 90)
     }
     /** Page images (base64 JPEG, at most 4) → their text. [batchIndex] 0 counts as one AI use for the whole book. */
-    suspend fun readSourcePages(images: List<String>, batchIndex: Int): List<String> {
-        val body = buildJsonObject { put("images", JsonArray(images.map { JsonPrimitive(it) })); put("batchIndex", batchIndex) }.toString()
+    suspend fun readSourcePages(images: List<String>, batchIndex: Int, pageStart: Int, documentHash: String): List<String> {
+        val body = buildJsonObject { put("images", JsonArray(images.map { JsonPrimitive(it) })); put("batchIndex", batchIndex); put("pageStart", pageStart); put("documentHash", documentHash) }.toString()
         return c.request("POST", "/api/content-sources/read-pages", ReadPagesResult.serializer(), body, timeoutSeconds = 120).pages
     }
     suspend fun contentSourceSection(id: String, sectionId: String): ContentSectionText =

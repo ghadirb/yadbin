@@ -41,7 +41,7 @@ sealed interface PdfReadResult {
  */
 class PdfReader(
     private val app: Context,
-    private val readPages: suspend (images: List<String>, batchIndex: Int) -> List<String>,
+    private val readPages: suspend (images: List<String>, batchIndex: Int, pageStart: Int, documentHash: String) -> List<String>,
 ) {
     companion object {
         const val BATCH = 4
@@ -60,7 +60,7 @@ class PdfReader(
             file.writeBytes(bytes)
             val own = try { textLayer(file, progress) } catch (e: TooManyPages) { return@withContext PdfReadResult.Failed(TOO_MANY_PAGES) }
             if (own != null && PdfTextRules.isUsable(own)) return@withContext PdfReadResult.Text(PdfTextRules.join(own), false)
-            visionRead(file, progress)
+            visionRead(file, progress, sha256(bytes))
         } finally { file.delete() }
     }
 
@@ -89,7 +89,7 @@ class PdfReader(
         } catch (e: Throwable) { null } // broken / encrypted file or out of memory: let the renderer try
     }
 
-    private suspend fun visionRead(file: File, progress: (Int, Int, Boolean) -> Unit): PdfReadResult {
+    private suspend fun visionRead(file: File, progress: (Int, Int, Boolean) -> Unit, documentHash: String): PdfReadResult {
         val pfd = try { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) } catch (e: Exception) { return PdfReadResult.Failed(UNREADABLE) }
         try {
             val renderer = try { PdfRenderer(pfd) } catch (e: Exception) { return PdfReadResult.Failed(UNREADABLE) } // password-protected or damaged
@@ -104,7 +104,7 @@ class PdfReader(
                     currentCoroutineContext().ensureActive()
                     val end = min(n, i + BATCH)
                     val images = (i until end).map { renderJpegBase64(renderer, it) }
-                    out += sendBatch(images, batch)
+                    out += sendBatch(images, batch, i, documentHash)
                     batch++
                     i = end
                     progress(i, n, true)
@@ -116,9 +116,9 @@ class PdfReader(
     }
 
     /** One batch, with a single quiet retry for a temporary AI / network failure. */
-    private suspend fun sendBatch(images: List<String>, batch: Int): List<String> {
+    private suspend fun sendBatch(images: List<String>, batch: Int, pageStart: Int, documentHash: String): List<String> {
         try {
-            return readPages(images, batch)
+            return readPages(images, batch, pageStart, documentHash)
         } catch (e: NetworkException) {
         } catch (e: ApiException) { if (e.status != 502 && e.status != 503) throw e }
         return readPages(images, batch)

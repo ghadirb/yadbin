@@ -33,4 +33,6 @@ export interface Env {
   AVALAI_VISION_MODEL?: string;
   /** Override the AvalAI base URL (default https://api.avalai.ir/v1). */
   AVALAI_BASE_URL?: string;
+  /** Maximum billed page reads for paid vision OCR per calendar month. */
+  VISION_PAGES_PER_MONTH?: string;
 }

@@ -34,7 +34,7 @@ class AppContainer(app: Application) {
     val repository = Repository(ApiService(client), RoomCacheStore(db.cacheDao()), tokens)
     val createActivity = CreateActivityUseCase(repository)
     /** Reads a book PDF on the phone (text layer, or page images via the server's vision endpoint) — the Worker never parses a PDF. */
-    val pdfReader = com.yadbin.teacher.core.pdf.PdfReader(app) { images, batch -> repository.readSourcePages(images, batch) }
+    val pdfReader = com.yadbin.teacher.core.pdf.PdfReader(app) { images, batch, pageStart, documentHash -> repository.readSourcePages(images, batch, pageStart, documentHash) }
     /** Myket in-app purchase. Without IAB key in the build it stays inert and the UI says «به‌زودی فعال می‌شود». */
     val purchases = PurchaseCoordinator(repository, MyketBilling(app, KeyMask.decode(BuildConfig.IAB_KEY_MASKED)))
     /** Student pictures: local-only (never uploaded). */
