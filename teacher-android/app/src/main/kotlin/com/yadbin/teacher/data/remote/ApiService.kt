@@ -265,6 +265,8 @@ class ApiService(private val c: ApiClient) {
         val body = buildJsonObject { put("images", JsonArray(images.map { JsonPrimitive(it) })); put("batchIndex", batchIndex); put("pageStart", pageStart); put("documentHash", documentHash) }.toString()
         return c.request("POST", "/api/content-sources/read-pages", ReadPagesResult.serializer(), body, timeoutSeconds = 120).pages
     }
+    suspend fun visionQuota(): com.yadbin.teacher.core.pdf.VisionQuota =
+        c.request("GET", "/api/content-sources/vision-quota", com.yadbin.teacher.core.pdf.VisionQuota.serializer())
     suspend fun contentSourceSection(id: String, sectionId: String): ContentSectionText =
         c.request("GET", "/api/content-sources/$id/sections/$sectionId", ContentSectionText.serializer())
     /** AI makes a DRAFT from the selected part of the teacher's book only (never published). No student data is sent. */

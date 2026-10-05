@@ -48,6 +48,8 @@ class SourceDetailViewModel(private val repo: Repository, private val id: String
     private val _text = MutableStateFlow<Ui<ContentSectionText>?>(null)
     val text: StateFlow<Ui<ContentSectionText>?> = _text.asStateFlow()
 
+    val visionPrompt = VisionPromptHost()
+
     init { refresh() }
     fun clearMessage() { _message.value = null }
     fun refresh() { viewModelScope.launch { if (_state.value !is Ui.Ready) _state.value = Ui.Loading; _state.value = loadUi { repo.contentSource(id) } } }
@@ -77,7 +79,7 @@ class SourceDetailViewModel(private val repo: Repository, private val id: String
             try {
                 val d = if (file.type == "pdf") {
                     // Same as adding a new PDF: read on the phone, send only the text.
-                    val r = pdf.read(file.bytes) { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }
+                    val r = pdf.read(file.bytes, { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }, visionPrompt::ask)
                     if (r is PdfReadResult.Failed) { _message.value = r.message; _busy.value = null; return@launch }
                     _busy.value = "در حال ذخیرهٔ متن کتاب…"
                     repo.processContentSourceText(id, (r as PdfReadResult.Text).text)
@@ -108,6 +110,7 @@ fun SourceDetailScreen(sourceId: String, onBack: () -> Unit, onMakeQuiz: (String
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val text by vm.text.collectAsStateWithLifecycle()
+    val visionPrompt by vm.visionPrompt.prompt.collectAsStateWithLifecycle()
     var edit by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -174,7 +177,7 @@ fun SourceDetailScreen(sourceId: String, onBack: () -> Unit, onMakeQuiz: (String
                             NoticeText("فصل‌ها و درس‌ها با اطمینان کامل تشخیص داده نشد. متن را بررسی کنید؛ هنگام ساخت آزمون می‌توانید کل متن یا بخش دلخواه را خودتان انتخاب کنید.")
                         }
                         if (src.status == "needs_ocr") item {
-                            NoticeText("متن این منبع خوانده نشد. «ارسال دوبارهٔ فایل» را بزنید تا صفحه‌ها این بار از روی تصویر خوانده شوند، یا متن کتاب را با «افزودن منبع ← وارد کردن متن» بدهید.")
+                            NoticeText("متن این منبع خوانده نشد. «ارسال دوبارهٔ فایل» را بزنید تا بازهٔ دلخواه از صفحه‌ها (با اشتراک فعال) از روی تصویر خوانده شود، یا متن کتاب را با «افزودن منبع ← وارد کردن متن» بدهید.")
                         }
                         if (tree.flatten().isNotEmpty()) {
                             item { SectionTitle("فصل‌ها و درس‌ها") }
@@ -231,6 +234,7 @@ fun SourceDetailScreen(sourceId: String, onBack: () -> Unit, onMakeQuiz: (String
             confirmButton = {},
         )
     }
+    visionPrompt?.let { VisionRangeDialog(it) }
 }
 
 @Composable

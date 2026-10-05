@@ -22,7 +22,7 @@ const requestSchema = z.object({
   /** 0 for the first batch of one book: that batch counts as ONE AI use for the monthly quota (the rest of the book is free of that counter). */
   batchIndex: z.number().int().min(0).max(200).default(0),
   documentHash: z.string().regex(/^[a-f0-9]{64}$/i, 'هش سند معتبر نیست.').optional(),
-  pageStart: z.number().int().min(0).max(119).optional(),
+  pageStart: z.number().int().min(0).max(299).optional(),
 });
 
 const SYSTEM = `You are a careful OCR engine for Persian (Farsi) school textbook pages.
@@ -88,7 +88,7 @@ export async function readPages(req: Request, env: Env, teacherId: string, provi
   const b = parse(requestSchema, await readBody(req));
   const pageStart = b.pageStart ?? 0;
   const documentHash = b.documentHash?.toLowerCase();
-  if (pageStart + b.images.length > 120) throw new HttpError(400, 'page_range_too_large', 'حداکثر ۱۲۰ صفحه برای خواندن تصویری مجاز است.');
+  if (pageStart + b.images.length > 300) throw new HttpError(400, 'page_range_too_large', 'شمارهٔ صفحه از حد مجاز (۳۰۰ صفحه) بیشتر است.');
   await rateLimit(env, `src-vision:${teacherId}`, VISION.perHour, 3600);
   if (!documentHash && env.ENVIRONMENT === 'production') throw new HttpError(400, 'document_hash_required', 'هش PDF برای خواندن تصویری لازم است.');
   if (!documentHash) {
@@ -124,4 +124,15 @@ export async function readPages(req: Request, env: Env, teacherId: string, provi
   statements.push(env.DB.prepare(`INSERT INTO usage_counters (teacher_id, feature, period, count) VALUES (?, 'vision_pages', ?, ?) ON CONFLICT(teacher_id, feature, period) DO UPDATE SET count = count + excluded.count`).bind(teacherId, new Date().toISOString().slice(0, 7), missingCount));
   await env.DB.batch(statements);
   return json({ pages, empty: pages.map((p) => p.length === 0), cached: false });
+}
+
+/** GET /api/content-sources/vision-quota — lets the app show «N صفحه از سهمیهٔ باقی‌ماندهٔ شما» BEFORE any page is rendered or sent. */
+export async function visionQuota(env: Env, teacherId: string) {
+  const { getUserEntitlements } = await import('../subscription/entitlements');
+  const e = await getUserEntitlements(env, teacherId);
+  const limit = visionPagesPerMonth(env);
+  const row = await env.DB.prepare("SELECT count FROM usage_counters WHERE teacher_id = ? AND feature = 'vision_pages' AND period = ?")
+    .bind(teacherId, new Date().toISOString().slice(0, 7)).first<{ count: number }>();
+  const used = row?.count ?? 0;
+  return json({ allowed: e.subscriptionActive, plan: e.plan, limit, used, remaining: Math.max(0, limit - used), maxPagesPerBook: 120 });
 }

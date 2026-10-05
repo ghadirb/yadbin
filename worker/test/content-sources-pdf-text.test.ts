@@ -137,6 +137,18 @@ describe('reading page images with the vision model', () => {
     await expect(readPages(asReq({ images: [jpegB64], batchIndex: 0, pageStart: 0, documentHash: 'b'.repeat(64) }), { DB: t.db } as any, tc.id, async () => '{"pages":["x"]}')).rejects.toMatchObject({ status: 403, code: 'VISION_SUBSCRIPTION_REQUIRED' });
   });
 
+  it('vision-quota tells a Free account it is not allowed and a Pro account its remaining pages', async () => {
+    const tc = await registerTeacher(t);
+    expect((await t.api('GET', '/api/content-sources/vision-quota')).status).toBe(401);
+    const free = await t.api('GET', '/api/content-sources/vision-quota', undefined, tc.token);
+    expect(free.status).toBe(200); expect(free.data.allowed).toBe(false);
+    const now = new Date();
+    await t.db.prepare("INSERT INTO subscriptions (id, teacher_id, plan_id, status, started_at, expires_at, provider, created_at, updated_at) VALUES (?, ?, 'pro_monthly', 'active', ?, ?, 'test', ?, ?)")
+      .bind(crypto.randomUUID(), tc.id, now.toISOString(), new Date(now.getTime() + 86400000).toISOString(), now.toISOString(), now.toISOString()).run();
+    const pro = await t.api('GET', '/api/content-sources/vision-quota', undefined, tc.token);
+    expect(pro.data.allowed).toBe(true); expect(pro.data.remaining).toBe(pro.data.limit); expect(pro.data.used).toBe(0);
+  });
+
   it('parseVisionPages never trusts a reply with a wrong shape', () => {
     expect(parseVisionPages('{"pages":["a","b"]}', 2)).toEqual(['a', 'b']);
     expect(parseVisionPages('{"pages":["a"]}', 2)).toBeNull();

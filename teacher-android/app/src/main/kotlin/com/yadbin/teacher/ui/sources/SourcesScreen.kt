@@ -58,6 +58,9 @@ class SourcesViewModel(private val repo: Repository, private val pdf: PdfReader)
     private val _busy = MutableStateFlow<String?>(null)
     val busy: StateFlow<String?> = _busy.asStateFlow()
 
+    /** Asks which pages to read from images (only when the PDF text is unusable). */
+    val visionPrompt = VisionPromptHost()
+
     init { refresh() }
     fun clearMessage() { _message.value = null }
     fun refresh() { viewModelScope.launch { if (_state.value !is Ui.Ready) _state.value = Ui.Loading; _state.value = loadUi { repo.contentSources() } } }
@@ -76,7 +79,7 @@ class SourcesViewModel(private val repo: Repository, private val pdf: PdfReader)
                 } else {
                     if (file.type == "pdf") {
                         // The PDF is read ON THE PHONE (text layer, or page images → vision) and only its text is sent: the Worker never parses a PDF.
-                        val r = pdf.read(file.bytes) { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }
+                        val r = pdf.read(file.bytes, { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }, visionPrompt::ask)
                         if (r is PdfReadResult.Failed) { _message.value = r.message; _busy.value = null; return@launch }
                         _busy.value = "در حال ذخیرهٔ متن کتاب…"
                         val d = repo.createContentSource(draft.title, draft.subject, draft.gradeCode, draft.description, "pdf", file.name, (r as PdfReadResult.Text).text)
@@ -120,6 +123,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val visionPrompt by vm.visionPrompt.prompt.collectAsStateWithLifecycle()
     // The form opens ONLY from the «افزودن منبع» button, and never as a side effect of anything else: not saved across restarts, and a tap that
     // arrives right after the screen opened or right after the form closed (a phantom / repeated tap) is ignored.
     var showAdd by remember { mutableStateOf(false) }
@@ -144,6 +148,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
         val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 20.0)
         AddSourceForm(maxMb, onBack = { closeAdd() }) { draft -> closeAdd(); vm.add(draft, onOpen) }
         busy?.let { BusyDialog(it) }
+        visionPrompt?.let { VisionRangeDialog(it) }
         return
     }
 
@@ -176,6 +181,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     }
 
     busy?.let { BusyDialog(it) }
+    visionPrompt?.let { VisionRangeDialog(it) }
 }
 
 @Composable
@@ -254,7 +260,7 @@ private fun AddSourceForm(maxMegabytes: Double, onBack: () -> Unit, onAdd: (NewS
                     when (val p = picked) {
                         is PickResult.Ok -> Text("فایل انتخاب‌شده: ${p.name}", style = MaterialTheme.typography.bodySmall)
                         is PickResult.Bad -> Text(p.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        null -> NoticeText("PDF، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. متن PDF روی گوشی خوانده می‌شود؛ اگر خراب یا اسکن‌شده باشد، صفحه‌ها (تا ۱۲۰ صفحه) از روی تصویر خوانده می‌شوند و این کار کمی طول می‌کشد. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
+                        null -> NoticeText("PDF، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. متن PDF روی گوشی خوانده می‌شود؛ اگر خراب یا اسکن‌شده باشد، می‌توانید بازهٔ صفحه‌ها (تا ۱۲۰ صفحه در هر بار) را انتخاب کنید تا از روی تصویر خوانده شوند؛ این کار فقط با اشتراک فعال ممکن است، از سهمیهٔ ماهانه کسر می‌شود و کمی طول می‌کشد. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
                     }
                 }
             Button(

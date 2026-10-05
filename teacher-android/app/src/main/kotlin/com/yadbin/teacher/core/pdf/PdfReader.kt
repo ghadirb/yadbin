@@ -20,8 +20,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/** Monthly image-reading allowance from GET /api/content-sources/vision-quota. */
+@kotlinx.serialization.Serializable
+data class VisionQuota(val allowed: Boolean = false, val limit: Int = 0, val used: Int = 0, val remaining: Int = 0, val maxPagesPerBook: Int = 120)
 
 /** Result of reading a book PDF on the phone. */
 sealed interface PdfReadResult {
@@ -42,6 +47,8 @@ sealed interface PdfReadResult {
 class PdfReader(
     private val app: Context,
     private val readPages: suspend (images: List<String>, batchIndex: Int, pageStart: Int, documentHash: String) -> List<String>,
+    /** Loads the teacher's image-reading allowance; null when it cannot be loaded (the server still enforces it). */
+    private val loadQuota: suspend () -> VisionQuota? = { null },
 ) {
     companion object {
         const val BATCH = 4
@@ -54,17 +61,28 @@ class PdfReader(
     }
 
     /** [progress] gets (pagesDone, pagesTotal, viaVision) so the screen can say «صفحهٔ ۱۲ از ۱۵۳». */
-    suspend fun read(bytes: ByteArray, progress: (Int, Int, Boolean) -> Unit): PdfReadResult = withContext(Dispatchers.IO) {
+    /**
+     * [chooseRange] is asked ONLY when the text layer is unusable and pages must be read from images (paid, metered): it gets the page count and the
+     * allowance and returns the 1-based inclusive page range to read, or null when the teacher cancels.
+     */
+    suspend fun read(
+        bytes: ByteArray,
+        progress: (Int, Int, Boolean) -> Unit,
+        chooseRange: suspend (pageCount: Int, quota: VisionQuota?) -> IntRange? = { n, _ -> 1..minOf(n, VISION_MAX_PAGES) },
+    ): PdfReadResult = withContext(Dispatchers.IO) {
         val file = File.createTempFile("book", ".pdf", app.cacheDir)
         try {
             file.writeBytes(bytes)
             val own = try { textLayer(file, progress) } catch (e: TooManyPages) { return@withContext PdfReadResult.Failed(TOO_MANY_PAGES) }
             if (own != null && PdfTextRules.isUsable(own)) return@withContext PdfReadResult.Text(PdfTextRules.join(own), false)
-            visionRead(file, progress, sha256(bytes))
+            visionRead(file, progress, sha256(bytes), chooseRange)
         } finally { file.delete() }
     }
 
     private class TooManyPages : Exception()
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /** Text of every page, or null when PdfBox cannot open / read the file (then the image path is tried). */
     private suspend fun textLayer(file: File, progress: (Int, Int, Boolean) -> Unit): List<String>? {
@@ -89,25 +107,38 @@ class PdfReader(
         } catch (e: Throwable) { null } // broken / encrypted file or out of memory: let the renderer try
     }
 
-    private suspend fun visionRead(file: File, progress: (Int, Int, Boolean) -> Unit, documentHash: String): PdfReadResult {
+    private suspend fun visionRead(
+        file: File,
+        progress: (Int, Int, Boolean) -> Unit,
+        documentHash: String,
+        chooseRange: suspend (Int, VisionQuota?) -> IntRange?,
+    ): PdfReadResult {
         val pfd = try { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) } catch (e: Exception) { return PdfReadResult.Failed(UNREADABLE) }
         try {
             val renderer = try { PdfRenderer(pfd) } catch (e: Exception) { return PdfReadResult.Failed(UNREADABLE) } // password-protected or damaged
             try {
                 val n = renderer.pageCount
                 if (n == 0) return PdfReadResult.Failed(UNREADABLE)
-                if (n > VISION_MAX_PAGES) return PdfReadResult.Failed(TOO_MANY_FOR_IMAGES)
-                val out = ArrayList<String>(n)
+                // Look at the allowance BEFORE rendering or sending anything: a Free account must not even start.
+                val quota = try { loadQuota() } catch (e: CancellationException) { throw e } catch (e: Exception) { null }
+                if (quota != null && !quota.allowed) return PdfReadResult.Failed(SUBSCRIPTION_REQUIRED)
+                val range = chooseRange(n, quota) ?: return PdfReadResult.Failed(CANCELLED)
+                val first = range.first.coerceAtLeast(1) - 1
+                val last = min(n, range.last)
+                val count = last - first
+                if (count <= 0) return PdfReadResult.Failed(BAD_RANGE)
+                if (count > VISION_MAX_PAGES) return PdfReadResult.Failed(TOO_MANY_FOR_IMAGES)
+                val out = ArrayList<String>(count)
                 var batch = 0
-                var i = 0
-                while (i < n) {
+                var i = first
+                while (i < last) {
                     currentCoroutineContext().ensureActive()
-                    val end = min(n, i + BATCH)
+                    val end = min(last, i + BATCH)
                     val images = (i until end).map { renderJpegBase64(renderer, it) }
                     out += sendBatch(images, batch, i, documentHash)
                     batch++
                     i = end
-                    progress(i, n, true)
+                    progress(i - first, count, true)
                 }
                 if (!PdfTextRules.isUsable(out)) return PdfReadResult.Failed(NO_TEXT_FOUND)
                 return PdfReadResult.Text(PdfTextRules.join(out), true)
@@ -115,13 +146,13 @@ class PdfReader(
         } finally { pfd.close() }
     }
 
-    /** One batch, with a single quiet retry for a temporary AI / network failure. */
+    /** One batch, with a single quiet retry for a temporary AI / network failure (pages already read are cached on the server, so a retry is free). */
     private suspend fun sendBatch(images: List<String>, batch: Int, pageStart: Int, documentHash: String): List<String> {
         try {
             return readPages(images, batch, pageStart, documentHash)
         } catch (e: NetworkException) {
         } catch (e: ApiException) { if (e.status != 502 && e.status != 503) throw e }
-        return readPages(images, batch)
+        return readPages(images, batch, pageStart, documentHash)
     }
 
     private fun renderJpegBase64(r: PdfRenderer, index: Int): String {
@@ -148,5 +179,8 @@ class PdfReader(
 
 private const val UNREADABLE = "فایل خوانده نشد؛ ممکن است رمزدار یا آسیب‌دیده باشد. فایل دیگری را امتحان کنید یا متن کتاب را وارد کنید."
 private const val TOO_MANY_PAGES = "تعداد صفحات از حد مجاز (۳۰۰ صفحه) بیشتر است. فصل‌های موردنظر را جداگانه وارد کنید."
-private const val TOO_MANY_FOR_IMAGES = "متن این PDF از روی خود فایل قابل خواندن نیست و خواندن تصویری فقط تا ۱۲۰ صفحه ممکن است. فصل‌های موردنظر را جداگانه (PDF کوچک‌تر) وارد کنید."
+private const val TOO_MANY_FOR_IMAGES = "خواندن تصویری در هر بار فقط تا ۱۲۰ صفحه ممکن است. بازهٔ کوچک‌تری (مثلاً یک یا چند فصل) را انتخاب کنید."
 private const val NO_TEXT_FOUND = "از صفحه‌های این فایل متن قابل‌استفاده‌ای خوانده نشد. فایل دیگری را امتحان کنید یا متن کتاب را وارد کنید."
+private const val SUBSCRIPTION_REQUIRED = "متن این PDF از روی خود فایل قابل خواندن نیست و خواندن تصویری فقط با اشتراک فعال ممکن است. می‌توانید اشتراک تهیه کنید یا متن کتاب را وارد کنید."
+private const val CANCELLED = "خواندن تصویری لغو شد."
+private const val BAD_RANGE = "بازهٔ صفحه‌ها معتبر نیست."
