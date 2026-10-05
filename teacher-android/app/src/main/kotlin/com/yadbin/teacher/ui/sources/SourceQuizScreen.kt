@@ -79,7 +79,7 @@ fun SourceQuizScreen(sourceId: String, onBack: () -> Unit, onCreated: (String) -
                     items(SourceRules.QUESTION_TYPES) { (key, label) -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(key in types, { checked -> types = if (checked) types + key else types - key }); Text(label) } }
                     item { Text("سطح سؤال") }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("easy" to "ط¢ط³ط§ظ†", "medium" to "ظ…طھظˆط³ط·", "hard" to "ط³ط®طھ").forEach { (key, label) -> FilterChip(selected = level == key, onClick = { level = key }, label = { Text(label) }) } } }
-                    item { if (!advice.ok) Text(advice.message ?: "ظ…ط­ط¯ظˆط¯ظ‡ظ” ط§ظ†طھط®ط§ط¨â€Œط´ط¯ظ‡ ع©ط§ظپغŒ ظ†غŒط³طھ.", color = MaterialTheme.colorScheme.error) }
+                    item { if (!advice.ok) Text(advice.message ?: "محدودهٔ انتخاب‌شده کافی نیست.", color = MaterialTheme.colorScheme.error) }
                     item { Button(enabled = advice.ok && types.isNotEmpty() && !busy, onClick = { vm.create(SourceDraftSpec(sourceId = sourceId, sectionIds = selected.toList(), wholeSource = wholeSource, title = title, level = level, questionCount = count, questionTypes = types.toList()), onCreated) }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("ساخت پیش‌نویس آزمون") } }
                     item { Text("آزمون ابتدا به‌صورت پیش‌نویس باز می‌شود و قبل از انتشار قابل ویرایش و بازبینی است.", style = MaterialTheme.typography.bodySmall) }
                 }

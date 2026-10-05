@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -104,8 +105,9 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
-    var showAdd by remember { mutableStateOf(false) }
+    var showAdd by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = !showAdd && busy == null, onBack = onBack)
+    androidx.activity.compose.BackHandler(enabled = showAdd) { showAdd = false }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -115,6 +117,14 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refresh() }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
+    }
+
+    // The add form is a full screen inside this screen (not a floating dialog), so Cancel / Back always closes it.
+    if (showAdd) {
+        val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 5.0)
+        AddSourceForm(maxMb, onBack = { showAdd = false }) { draft -> showAdd = false; vm.add(draft, onOpen) }
+        busy?.let { BusyDialog(it) }
+        return
     }
 
     Scaffold(
@@ -133,9 +143,8 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
                         Spacer(Modifier.height(32.dp))
                         EmptyState("هنوز کتاب یا منبعی اضافه نکرده‌اید. فایل PDF، Word یا متن درس را اضافه کنید تا آزمون فقط از روی همان ساخته شود.", "افزودن اولین منبع") { showAdd = true }
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {                            item { NoticeText("منابع فقط برای شما قابل مشاهده‌اند. آزمون ساخته‌شده از یک منبع فقط از متن همان منبع سؤال می‌گیرد و همیشه پیش‌نویس است؛ شما آن را بررسی و تأیید می‌کنید.") }
-                            if (list.sources.any { SourceRules.isUsable(it) }) item {
-                            }
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            item { NoticeText("منابع فقط برای شما قابل مشاهده‌اند. آزمون ساخته‌شده از یک منبع فقط از متن همان منبع سؤال می‌گیرد و همیشه پیش‌نویس است؛ شما آن را بررسی و تأیید می‌کنید.") }
                             items(list.sources, key = { it.id }) { src -> SourceCard(src) { onOpen(src.id) } }
                             item { NoticeText("حداکثر ${list.limit.fa()} منبع، هر فایل تا ${list.maxFileMegabytes.toInt().fa()} مگابایت و ${list.maxPages.fa()} صفحه. برای کتاب بزرگ‌تر، فصل‌ها را جداگانه اضافه کنید.") }
                             item { Spacer(Modifier.height(72.dp)) }
@@ -146,23 +155,22 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
         }
     }
 
-    if (showAdd) {
-        val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 5.0)
-        AddSourceDialog(maxMb, onDismiss = { showAdd = false }) { draft -> showAdd = false; vm.add(draft, onOpen) }
-    }
-    busy?.let { text ->
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("لطفاً صبر کنید") },
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
-                    Text(text)
-                }
-            },
-            confirmButton = {},
-        )
-    }
+    busy?.let { BusyDialog(it) }
+}
+
+@Composable
+private fun BusyDialog(text: String) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("لطفاً صبر کنید") },
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+                Text(text)
+            }
+        },
+        confirmButton = {},
+    )
 }
 
 @Composable
@@ -174,25 +182,25 @@ private fun SourceCard(s: ContentSourceInfo, onClick: () -> Unit) {
                 SourceStatusChip(s)
             }
             val meta = listOfNotNull(s.subject, s.gradeLabel, s.fileTypeLabel.ifBlank { null })
-            if (meta.isNotEmpty()) Text(meta.joinToString(" â€¢ "), style = MaterialTheme.typography.bodySmall)
+            if (meta.isNotEmpty()) Text(meta.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
             val size = SourceRules.sizeLine(s)
             if (size.isNotEmpty()) Text(size, style = MaterialTheme.typography.bodySmall)
-            // the plain Persian reason for a source that cannot be used (scanned PDF, damaged file â€¦)
+            // the plain Persian reason for a source that cannot be used (scanned PDF, damaged file …)
             if (!SourceRules.isUsable(s)) s.statusMessage?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         }
     }
 }
 
 @Composable
-private fun AddSourceDialog(maxMegabytes: Double, onDismiss: () -> Unit, onAdd: (NewSource) -> Unit) {
+private fun AddSourceForm(maxMegabytes: Double, onBack: () -> Unit, onAdd: (NewSource) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var paste by remember { mutableStateOf(false) }
-    var title by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var grade by remember { mutableStateOf<String?>(null) }
-    var desc by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
+    var paste by rememberSaveable { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var grade by rememberSaveable { mutableStateOf<String?>(null) }
+    var desc by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
     var picked by remember { mutableStateOf<PickResult?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
@@ -203,11 +211,11 @@ private fun AddSourceDialog(maxMegabytes: Double, onDismiss: () -> Unit, onAdd: 
     }
     val file = picked as? PickResult.Ok
     val valid = title.trim().length >= 2 && (if (paste) text.isNotBlank() else file != null)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("افزودن کتاب یا منبع") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Scaffold(topBar = { YadbinTopBar("افزودن کتاب یا منبع", onBack) }) { pad ->
+        Column(
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !paste, onClick = { paste = false }, label = { Text("فایل") })
                     FilterChip(selected = paste, onClick = { paste = true }, label = { Text("وارد کردن متن") })
@@ -229,17 +237,14 @@ private fun AddSourceDialog(maxMegabytes: Double, onDismiss: () -> Unit, onAdd: 
                         null -> NoticeText("PDF متنی، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. PDF اسکن‌شده فعلاً پشتیبانی نمی‌شود. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(
+            Button(
                 enabled = valid,
                 onClick = {
                     onAdd(NewSource(title.trim(), subject.ifBlank { null }, grade, desc.ifBlank { null }, if (paste) text else null, if (paste) null else file))
                 },
+                modifier = Modifier.fillMaxWidth(),
             ) { Text("افزودن") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
-    )
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+        }
+    }
 }
-

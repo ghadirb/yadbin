@@ -84,9 +84,10 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf("all") }
-    var showCreate by remember { mutableStateOf(false) }
-    var showAi by remember { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showAi by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = !showCreate && !showAi, onBack = onBack)
+    androidx.activity.compose.BackHandler(enabled = showCreate || showAi) { showCreate = false; showAi = false }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -96,6 +97,23 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refresh() }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
+    }
+
+    // The forms are full screens inside this screen (not floating dialogs), so Cancel / Back always closes them.
+    if (showAi) {
+        AiAssessmentForm(
+            onBack = { showAi = false },
+            onCreate = { p, sub, g, l, n -> showAi = false; vm.aiDraft(p, sub, g, l, n, onOpen) },
+        )
+        return
+    }
+    if (showCreate) {
+        CreateAssessmentForm(
+            onBack = { showCreate = false },
+            onAi = { showCreate = false; showAi = true },
+            onCreate = { t, sub, g, l, d, m -> showCreate = false; vm.create(t, sub, g, l, d, m, onOpen) },
+        )
+        return
     }
 
     Scaffold(
@@ -126,16 +144,6 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             }
         }
     }
-
-    if (showCreate) CreateAssessmentDialog(
-        onDismiss = { showCreate = false },
-        onAi = { showCreate = false; showAi = true },
-        onCreate = { t, sub, g, l, d, m -> showCreate = false; vm.create(t, sub, g, l, d, m, onOpen) },
-    )
-    if (showAi) AiAssessmentDialog(
-        onDismiss = { showAi = false },
-        onCreate = { p, sub, g, l, n -> showAi = false; vm.aiDraft(p, sub, g, l, n, onOpen) },
-    )
 }
 
 @Composable
@@ -157,59 +165,61 @@ private fun AssessmentCard(a: AssessmentInfo, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CreateAssessmentDialog(onDismiss: () -> Unit, onAi: () -> Unit, onCreate: (String, String?, String?, String?, String?, Int?) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var grade by remember { mutableStateOf<String?>(null) }
-    var level by remember { mutableStateOf<String?>(null) }
-    var desc by remember { mutableStateOf("") }
-    var minutes by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("ساخت آزمون جدید") },
-        text = {
-            Column(Modifier.verticalScrollCompat(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("عنوان آزمون") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(subject, { subject = it }, label = { Text("درس / موضوع") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                GradeDropdown("پایهٔ تحصیلی", grade, { grade = it }, allowNone = true)
-                OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
-                OutlinedTextField(desc, { desc = it }, label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth())
-                AgeField("زمان پیشنهادی به دقیقه (اختیاری)", minutes, { minutes = it })
-                TextButton(onClick = onAi) { Text("ساخت پیش‌نویس با هوش مصنوعی") }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = title.isNotBlank(), onClick = { onCreate(title, subject.ifBlank { null }, grade, level, desc.ifBlank { null }, parseIntFa(minutes)) }) { Text("ساخت و افزودن سؤال") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
-    )
+private fun CreateAssessmentForm(onBack: () -> Unit, onAi: () -> Unit, onCreate: (String, String?, String?, String?, String?, Int?) -> Unit) {
+    var title by rememberSaveable { mutableStateOf("") }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var grade by rememberSaveable { mutableStateOf<String?>(null) }
+    var level by rememberSaveable { mutableStateOf<String?>(null) }
+    var desc by rememberSaveable { mutableStateOf("") }
+    var minutes by rememberSaveable { mutableStateOf("") }
+    Scaffold(topBar = { YadbinTopBar("ساخت آزمون جدید", onBack) }) { pad ->
+        Column(
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedTextField(title, { title = it }, label = { Text("عنوان آزمون") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(subject, { subject = it }, label = { Text("درس / موضوع") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            GradeDropdown("پایهٔ تحصیلی", grade, { grade = it }, allowNone = true)
+            OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
+            OutlinedTextField(desc, { desc = it }, label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth())
+            AgeField("زمان پیشنهادی به دقیقه (اختیاری)", minutes, { minutes = it }, Modifier.fillMaxWidth())
+            TextButton(onClick = onAi) { Text("ساخت پیش‌نویس با هوش مصنوعی") }
+            Button(
+                enabled = title.isNotBlank(),
+                onClick = { onCreate(title, subject.ifBlank { null }, grade, level, desc.ifBlank { null }, parseIntFa(minutes)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("ساخت و افزودن سؤال") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+        }
+    }
 }
 
 @Composable
-private fun AiAssessmentDialog(onDismiss: () -> Unit, onCreate: (String, String?, String?, String?, Int) -> Unit) {
-    var prompt by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var grade by remember { mutableStateOf<String?>(null) }
-    var level by remember { mutableStateOf<String?>(null) }
-    var count by remember { mutableStateOf("10") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("پیش‌نویس آزمون با هوش مصنوعی") },
-        text = {
-            Column(Modifier.verticalScrollCompat(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("فقط پیش‌نویس ساخته می‌شود. شما آن را ویرایش، آزمایش و تأیید می‌کنید؛ هیچ آزمونی خودکار منتشر نمی‌شود. نام و اطلاعات دانش‌آموزان هرگز ارسال نمی‌شود.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(prompt, { prompt = it }, label = { Text("مثلاً: از فصل دوم علوم ششم یک آزمون متوسط بساز") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(subject, { subject = it }, label = { Text("درس (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                GradeDropdown("پایه", grade, { grade = it }, allowNone = true)
-                OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
-                AgeField("تعداد سؤال (۳ تا ۲۰)", count, { count = it })
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = prompt.trim().length >= 5, onClick = { onCreate(prompt, subject.ifBlank { null }, grade, level, (parseIntFa(count) ?: 10).coerceIn(3, 20)) }) { Text("ساخت پیش‌نویس") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
-    )
+private fun AiAssessmentForm(onBack: () -> Unit, onCreate: (String, String?, String?, String?, Int) -> Unit) {
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var subject by rememberSaveable { mutableStateOf("") }
+    var grade by rememberSaveable { mutableStateOf<String?>(null) }
+    var level by rememberSaveable { mutableStateOf<String?>(null) }
+    var count by rememberSaveable { mutableStateOf("10") }
+    Scaffold(topBar = { YadbinTopBar("پیش‌نویس آزمون با هوش مصنوعی", onBack) }) { pad ->
+        Column(
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            NoticeText("فقط پیش‌نویس ساخته می‌شود. شما آن را ویرایش، آزمایش و تأیید می‌کنید؛ هیچ آزمونی خودکار منتشر نمی‌شود. نام و اطلاعات دانش‌آموزان هرگز ارسال نمی‌شود.")
+            OutlinedTextField(prompt, { prompt = it }, label = { Text("مثلاً: از فصل دوم علوم ششم یک آزمون متوسط بساز") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(subject, { subject = it }, label = { Text("درس (اختیاری)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            GradeDropdown("پایه", grade, { grade = it }, allowNone = true)
+            OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
+            AgeField("تعداد سؤال (۳ تا ۲۰)", count, { count = it }, Modifier.fillMaxWidth())
+            Button(
+                enabled = prompt.trim().length >= 5,
+                onClick = { onCreate(prompt, subject.ifBlank { null }, grade, level, (parseIntFa(count) ?: 10).coerceIn(3, 20)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("ساخت پیش‌نویس") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+        }
+    }
 }
 
 /** Dialog content can be taller than the screen on small phones. */
