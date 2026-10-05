@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 
 package com.yadbin.teacher.ui.assessments
 
@@ -7,11 +7,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -111,7 +115,7 @@ class AssessmentViewModel(private val repo: Repository, private val id: String) 
 }
 
 @Composable
-fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment: (String) -> Unit) {
+fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment: (String) -> Unit, onRebuildFromSource: (sourceId: String, assessmentId: String) -> Unit = { _, _ -> }) {
     val c = LocalContainer.current
     val ctx = LocalContext.current
     val vm: AssessmentViewModel = viewModel(key = "assessment-$assessmentId", factory = VmFactory { AssessmentViewModel(c.repository, assessmentId) })
@@ -130,6 +134,26 @@ fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment:
     var confirmDelete by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
+
+    // coming back from «ساخت دوباره از منبع» (or the browser preview) shows the new truth
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refresh() }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+
+    // «ویرایش اطلاعات آزمون» is a full screen (same fields as «ساخت آزمون جدید»), not a small dialog.
+    val infoTarget = (state as? Ui.Ready<AssessmentDetail>)?.data
+    if (editInfo && infoTarget != null) {
+        androidx.activity.compose.BackHandler { editInfo = false }
+        EditInfoForm(
+            infoTarget, snackbar,
+            onBack = { editInfo = false },
+            onRebuild = { sid -> editInfo = false; onRebuildFromSource(sid, assessmentId) },
+        ) { t, sub, g, l, ds, m -> editInfo = false; vm.saveInfo(t, sub, g, l, ds, m) }
+        return
+    }
 
     Scaffold(
         topBar = { YadbinTopBar("آزمون معلم", onBack, actions = { TextButton(onClick = vm::refresh) { Text("به‌روزرسانی") } }) },
@@ -204,7 +228,11 @@ fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment:
                                 OutlinedButton(onClick = { vm.duplicate(onOpenAssessment) }, modifier = Modifier.fillMaxWidth()) { Text("کپی آزمون") }
                                 OutlinedButton(onClick = { vm.setArchived(!archived) }, modifier = Modifier.fillMaxWidth()) { Text(if (archived) "خارج کردن از آرشیو" else "آرشیو") }
                                 if (a.status == "draft" || a.status == "teacher_preview" || a.status == "ready_to_publish") {
-                                    TextButton(onClick = { confirmDelete = true }) { Text("حذف پیش‌نویس", color = MaterialTheme.colorScheme.error) }
+                                    OutlinedButton(
+                                        onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                                    ) { Text("حذف کامل این آزمون (پیش‌نویس)") }
                                 }
                             }
                         }
@@ -244,7 +272,6 @@ fun AssessmentScreen(assessmentId: String, onBack: () -> Unit, onOpenAssessment:
 
     // ---- dialogs ----
     val cur = (state as? Ui.Ready<AssessmentDetail>)?.data
-    if (editInfo && cur != null) EditInfoDialog(cur.assessment, onDismiss = { editInfo = false }) { t, sub, g, l, ds, m -> editInfo = false; vm.saveInfo(t, sub, g, l, ds, m) }
     val et = editing
     if (et != null) QuestionDialog(initial = et.toDraft(), onDismiss = { editing = null }) { q -> editing = null; vm.updateQuestion(et.id, q) }
     val at = addType
@@ -293,12 +320,12 @@ private fun QuestionCard(q: AssessmentQuestion, index: Int, editable: Boolean, o
                 else -> Text("پاسخ‌های قابل‌قبول: " + q.answers.orEmpty().joinToString("، "), style = MaterialTheme.typography.bodySmall)
             }
             q.explanation?.let { Text("توضیح: $it", style = MaterialTheme.typography.bodySmall) }
-            if (editable) Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                TextButton(onClick = onEdit) { Text("ویرایش") }
-                TextButton(onClick = onCopy) { Text("کپی") }
+            if (editable) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                TextButton(onClick = onEdit) { Text("ویرایش", maxLines = 1, softWrap = false) }
+                TextButton(onClick = onCopy) { Text("کپی", maxLines = 1, softWrap = false) }
                 TextButton(onClick = onUp) { Text("↑") }
                 TextButton(onClick = onDown) { Text("↓") }
-                TextButton(onClick = onDelete) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onDelete) { Text("حذف سؤال", color = MaterialTheme.colorScheme.error, maxLines = 1, softWrap = false) }
             }
         }
     }
@@ -366,30 +393,46 @@ private fun QuestionDialog(initial: QuestionDraft, onDismiss: () -> Unit, onSave
 }
 
 @Composable
-private fun EditInfoDialog(a: AssessmentInfo, onDismiss: () -> Unit, onSave: (String, String?, String?, String?, String?, Int?) -> Unit) {
-    var title by remember { mutableStateOf(a.title) }
-    var subject by remember { mutableStateOf(a.subject.orEmpty()) }
-    var grade by remember { mutableStateOf(a.gradeCode) }
-    var level by remember { mutableStateOf(a.level) }
-    var desc by remember { mutableStateOf(a.description.orEmpty()) }
-    var minutes by remember { mutableStateOf(a.suggestedMinutes?.toString().orEmpty()) }
+private fun EditInfoForm(
+    d: AssessmentDetail, snackbar: SnackbarHostState, onBack: () -> Unit, onRebuild: (String) -> Unit,
+    onSave: (String, String?, String?, String?, String?, Int?) -> Unit,
+) {
+    val a = d.assessment
+    var title by rememberSaveable { mutableStateOf(a.title) }
+    var subject by rememberSaveable { mutableStateOf(a.subject.orEmpty()) }
+    var grade by rememberSaveable { mutableStateOf(a.gradeCode) }
+    var level by rememberSaveable { mutableStateOf(a.level) }
+    var desc by rememberSaveable { mutableStateOf(a.description.orEmpty()) }
+    var minutes by rememberSaveable { mutableStateOf(a.suggestedMinutes?.toString().orEmpty()) }
     val changesContent = grade != a.gradeCode || level != a.level
-    AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("اطلاعات آزمون") },
-        text = {
-            Column(Modifier.verticalScrollCompat(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("عنوان آزمون") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(subject, { subject = it }, label = { Text("درس / موضوع") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                GradeDropdown("پایهٔ تحصیلی", grade, { grade = it }, allowNone = true)
-                OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
-                OutlinedTextField(desc, { desc = it }, label = { Text("توضیح") }, modifier = Modifier.fillMaxWidth())
-                AgeField("زمان پیشنهادی (دقیقه)", minutes, { minutes = it })
-                if (changesContent) NoticeText("تغییر پایه یا سطح، آزمایش قبلی را باطل می‌کند و آزمایش دوباره لازم می‌شود.")
+    Scaffold(topBar = { YadbinTopBar("ویرایش اطلاعات آزمون", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
+        Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(title, { title = it }, label = { Text("عنوان آزمون") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(subject, { subject = it }, label = { Text("درس / موضوع") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            GradeDropdown("پایهٔ تحصیلی", grade, { grade = it }, allowNone = true)
+            OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
+            OutlinedTextField(desc, { desc = it }, label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth())
+            AgeField("زمان پیشنهادی به دقیقه (اختیاری)", minutes, { minutes = it }, Modifier.fillMaxWidth())
+            if (changesContent) NoticeText("تغییر پایه یا سطح، آزمایش قبلی را باطل می‌کند و آزمایش دوباره لازم می‌شود.")
+            val sid = a.sourceId
+            if (sid != null) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("سؤال‌ها از منبع «${a.sourceTitle ?: "منبع"}» ساخته شده‌اند.", style = MaterialTheme.typography.titleSmall)
+                        Text("می‌توانید محدودهٔ متن، تعداد، نوع و سطح سؤال‌ها را مثل صفحهٔ ساخت عوض کنید و سؤال‌ها را دوباره بسازید.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { onRebuild(sid) }, enabled = d.editable, modifier = Modifier.fillMaxWidth()) { Text("تغییر محدوده، تعداد و نوع سؤال‌ها (ساخت دوباره از منبع)") }
+                        if (!d.editable) Text("این آزمون منتشر شده است؛ برای تغییر سؤال‌ها ابتدا «ساخت نسخهٔ جدید» را بزنید.", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
-        },
-        confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = { onSave(title, subject.ifBlank { null }, grade, level, desc.ifBlank { null }, parseIntFa(minutes)) }) { Text("ذخیره") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("انصراف") } },
-    )
+            Button(
+                enabled = title.isNotBlank(),
+                onClick = { onSave(title, subject.ifBlank { null }, grade, level, desc.ifBlank { null }, parseIntFa(minutes)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("ذخیره") }
+            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+        }
+    }
 }
 
 @Composable

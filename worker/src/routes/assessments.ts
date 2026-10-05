@@ -69,13 +69,13 @@ async function detail(env: Env, teacherId: string, id: string, status = 200) {
   }, status);
 }
 
-function assertEditable(a: any) {
+export function assertEditable(a: any) {
   if (a.status === 'archived') throw new HttpError(409, 'assessment_archived', 'این آزمون آرشیو شده است. ابتدا آن را از آرشیو خارج کنید.');
   if (!EDITABLE.has(a.status)) throw new HttpError(409, 'assessment_locked', 'این آزمون منتشر شده و تغییر نمی‌کند. برای ویرایش، «ساخت نسخه جدید» را بزنید؛ نتیجه‌های قبلی دست‌نخورده می‌مانند.');
 }
 
 /** Statements that must accompany every change of what a student would see. */
-function invalidate(env: Env, a: any, now: string) {
+export function invalidate(env: Env, a: any, now: string) {
   return [
     env.DB.prepare(`UPDATE assessments SET content_rev = content_rev + 1, status = CASE WHEN status IN ('teacher_preview','ready_to_publish') THEN 'draft' ELSE status END,
         previewed_at = NULL, preview_feedback = NULL, teacher_approved_at = NULL, updated_at = ? WHERE id = ?`).bind(now, a.id),

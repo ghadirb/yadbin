@@ -53,7 +53,7 @@ object Routes {
     const val UPGRADE = "upgrade"
     const val SOURCES = "sources"
     const val SOURCE = "source/{id}"
-    const val SOURCE_QUIZ = "sourceQuiz/{id}"
+    const val SOURCE_QUIZ = "sourceQuiz/{id}?replace={replace}"
 }
 
 private fun NavHostController.toLoginClearingStack() {
@@ -160,16 +160,23 @@ fun AppNav() {
             val id = e.arguments?.getString("id") ?: return@composable
             SourceDetailScreen(sourceId = id, onBack = { nav.popBackStack() }, onMakeQuiz = { nav.navigate("sourceQuiz/$it") })
         }
-        composable(Routes.SOURCE_QUIZ) { e ->
+        composable(Routes.SOURCE_QUIZ, arguments = listOf(androidx.navigation.navArgument("replace") { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null })) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
-            SourceQuizScreen(sourceId = id, onBack = { nav.popBackStack() }, onCreated = { assessmentId -> nav.navigate("assessment/$assessmentId") { popUpTo(Routes.SOURCE_QUIZ) { inclusive = true } } })
+            val replace = e.arguments?.getString("replace")
+            SourceQuizScreen(
+                sourceId = id, replaceAssessmentId = replace, onBack = { nav.popBackStack() },
+                onCreated = { assessmentId ->
+                    // editing rebuilds the same assessment: go back to it (it refreshes itself); creating opens the new draft
+                    if (replace != null) nav.popBackStack() else nav.navigate("assessment/$assessmentId") { popUpTo(Routes.SOURCE_QUIZ) { inclusive = true } }
+                },
+            )
         }
         composable(Routes.ASSESSMENTS) {
             AssessmentsScreen(onBack = { nav.popBackStack() }, onOpen = { nav.navigate("assessment/$it") })
         }
         composable(Routes.ASSESSMENT) { e ->
             val id = e.arguments?.getString("id") ?: return@composable
-            AssessmentScreen(assessmentId = id, onBack = { nav.popBackStack() }, onOpenAssessment = { nav.navigate("assessment/$it") })
+            AssessmentScreen(assessmentId = id, onBack = { nav.popBackStack() }, onOpenAssessment = { nav.navigate("assessment/$it") }, onRebuildFromSource = { sid, aid -> nav.navigate("sourceQuiz/$sid?replace=$aid") })
         }
         composable(Routes.SUBSCRIPTION) {
             SubscriptionScreen(onBack = { nav.popBackStack() }, onUpgrade = { nav.navigate(Routes.UPGRADE) })

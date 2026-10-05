@@ -4,7 +4,7 @@ import { normalizeAnswer, QUESTION_TYPES, QUESTION_TYPE_LABELS_FA, teacherView, 
 import { extractJson, modelTextWith } from './builder';
 import { coerceModelQuestion, type TextProvider } from './assessment-draft';
 import { sourceReferenceLabel, toPersianDigits } from '../content_sources/text';
-import { assessmentDto, loadQuestions } from '../routes/assessments';
+import { assessmentDto, loadQuestions, getOwnedAssessment, assertEditable, invalidate } from '../routes/assessments';
 import { getOwnedSource, USABLE_STATUSES } from '../routes/content-sources';
 import { HttpError, json, readJson } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
@@ -30,6 +30,8 @@ const requestSchema = z.object({
   sectionIds: z.array(z.string().uuid('بخش معتبر نیست.')).max(300).optional(),
   chunkRange: z.object({ from: z.number().int().min(1), to: z.number().int().min(1) }).optional(),
   wholeSource: z.boolean().optional(),
+  /** Edit mode: rebuild the questions of THIS (not yet published) assessment instead of creating a new one. */
+  replaceAssessmentId: z.string().uuid('آزمون معتبر نیست.').optional(),
   title: z.string().trim().max(100, 'عنوان آزمون خیلی بلند است.').optional(),
   description: z.string().trim().max(500, 'توضیحات خیلی بلند است.').optional(),
   subject: z.string().trim().max(60).optional(),
@@ -177,6 +179,9 @@ const hash = (s: string) => { let x = 5381; for (let i = 0; i < s.length; i++) x
 
 /** Everything after request parsing. `provider` is injected (real model in production, a fake in tests). */
 export async function runSourceDraft(env: Env, teacherId: string, b: SourceDraftRequest, provider: TextProvider) {
+  // Edit mode: the assessment must be the teacher's own and still editable (a published one never changes — «new version» exists for that).
+  const target = b.replaceAssessmentId ? await getOwnedAssessment(env.DB, teacherId, b.replaceAssessmentId) : null;
+  if (target) assertEditable(target);
   const { src, sections, chunks, titles } = await selectContent(env, teacherId, b);
   const selectedChars = chunks.reduce((t, c) => t + c.content.length, 0);
   if (!chunks.length || selectedChars < MIN_SOURCE_CHARS) throw new HttpError(422, 'content_too_short', 'متن انتخاب‌شده برای ساخت آزمون کافی نیست. بخش‌های بیشتری را انتخاب کنید یا فصل کامل را بردارید.', { requested: b.questionCount, suggested: 0 });
@@ -189,12 +194,12 @@ export async function runSourceDraft(env: Env, teacherId: string, b: SourceDraft
   if (b.questionCount > MAX_QUESTIONS_PER_REQUEST) throw new HttpError(422, 'too_many_questions', `در هر بار حداکثر ${toPersianDigits(MAX_QUESTIONS_PER_REQUEST)} سؤال ساخته می‌شود. تعداد را کمتر کنید یا چند آزمون جدا بسازید.`, { requested: b.questionCount, suggested: MAX_QUESTIONS_PER_REQUEST });
 
   // Abuse / double-tap guard + the same AI entitlement as every other AI feature. Nothing is counted until a draft is really saved.
-  const dupKey = `ai-src-dup:${teacherId}:${hash(JSON.stringify([b.sourceId, [...(b.sectionIds ?? [])].sort(), b.chunkRange, !!b.wholeSource, b.questionCount, b.questionTypes, b.level, b.title, b.notes]))}`;
+  const dupKey = `ai-src-dup:${teacherId}:${hash(JSON.stringify([b.sourceId, [...(b.sectionIds ?? [])].sort(), b.chunkRange, !!b.wholeSource, b.questionCount, b.questionTypes, b.level, b.title, b.notes, b.replaceAssessmentId]))}`;
   await rateLimit(env, `ai-assessment-src:${teacherId}`, 20, 3600);
   await rateLimit(env, dupKey, 1, 20);
   try {
     await requireAi(env, teacherId);
-    await enforceCreate(env, teacherId, 'assessments');
+    if (!target) await enforceCreate(env, teacherId, 'assessments'); // replacing creates nothing new, so the plan's assessment cap is not touched
 
     const labelled = sent.map((c, i) => ({ label: `C${i + 1}`, chunk: c }));
     const parts = new Map(labelled.map((p) => [p.label, p.chunk]));
@@ -211,27 +216,40 @@ export async function runSourceDraft(env: Env, teacherId: string, b: SourceDraft
     const { accepted, dropped } = validateSourceQuestions(out.questions, parts, allowed, b.questionCount);
     if (!accepted.length) throw new HttpError(502, 'ai_invalid', 'از روی بخش انتخاب‌شده سؤال معتبری ساخته نشد. دوباره تلاش کنید یا بخش دیگری را انتخاب کنید.', { retryable: true });
 
-    const id = newId(), now = nowIso();
-    const title = b.title || (out.title.length >= 2 ? out.title : `آزمون ${src.title}`.slice(0, 100));
+    const id = target?.id ?? newId(), now = nowIso();
+    const title = b.title || target?.title || (out.title.length >= 2 ? out.title : `آزمون ${src.title}`.slice(0, 100));
     const refOf = (c: ChunkRow) => {
       const sec = c.section_id ? sections.get(c.section_id) : undefined;
       if (!sec) return null; // no real section → no reference (never invented)
       return sourceReferenceLabel({ parentTitle: sec.parent_id ? sections.get(sec.parent_id)?.title : null, title: sec.title, page: c.page_number });
     };
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at,source_id,source_title) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .bind(id, teacherId, id, 1, title, b.description || null, b.subject ?? src.subject ?? null, b.gradeCode ?? src.grade_code ?? null, b.level ?? null, b.suggestedMinutes ?? null, 'draft', now, now, src.id, src.title),
-      ...accepted.map(({ q, chunk }, i) => env.DB.prepare('INSERT INTO assessment_questions (id,assessment_id,position,question_type,text,options_json,correct_json,explanation,created_at,updated_at,source_id,section_id,chunk_id,page_number,source_reference) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .bind(newId(), id, i + 1, q.type, q.text, q.type === 'multiple_choice' ? JSON.stringify(q.options) : null, JSON.stringify(q.type === 'fill_blank' ? q.answers : q.correct), q.explanation ?? null, now, now,
-          src.id, chunk.section_id, chunk.id, chunk.page_number, refOf(chunk))),
-    ]);
+    const insertQ = accepted.map(({ q, chunk }, i) => env.DB.prepare('INSERT INTO assessment_questions (id,assessment_id,position,question_type,text,options_json,correct_json,explanation,created_at,updated_at,source_id,section_id,chunk_id,page_number,source_reference) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(newId(), id, i + 1, q.type, q.text, q.type === 'multiple_choice' ? JSON.stringify(q.options) : null, JSON.stringify(q.type === 'fill_blank' ? q.answers : q.correct), q.explanation ?? null, now, now,
+        src.id, chunk.section_id, chunk.id, chunk.page_number, refOf(chunk)));
+    if (target) {
+      // Same assessment, new questions: info the teacher did not send stays as it was; previews and approval are dropped (content changed).
+      await env.DB.batch([
+        env.DB.prepare('UPDATE assessments SET title=?, description=?, subject=?, grade_code=?, level=?, suggested_minutes=?, source_id=?, source_title=?, updated_at=? WHERE id=? AND teacher_id=?')
+          .bind(title, b.description ?? target.description ?? null, b.subject ?? target.subject ?? src.subject ?? null, b.gradeCode ?? target.grade_code ?? src.grade_code ?? null, b.level ?? target.level ?? null,
+            b.suggestedMinutes ?? target.suggested_minutes ?? null, src.id, src.title, now, id, teacherId),
+        env.DB.prepare('DELETE FROM assessment_questions WHERE assessment_id = ?').bind(id),
+        ...insertQ,
+        ...invalidate(env, target, now),
+      ]);
+    } else {
+      await env.DB.batch([
+        env.DB.prepare('INSERT INTO assessments (id,teacher_id,root_id,version,title,description,subject,grade_code,level,suggested_minutes,status,created_at,updated_at,source_id,source_title) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .bind(id, teacherId, id, 1, title, b.description || null, b.subject ?? src.subject ?? null, b.gradeCode ?? src.grade_code ?? null, b.level ?? null, b.suggestedMinutes ?? null, 'draft', now, now, src.id, src.title),
+        ...insertQ,
+      ]);
+    }
     await consumeAi(env, teacherId); // one valid AI request → one unit, same counter as every other AI feature
 
     const a = await env.DB.prepare('SELECT * FROM assessments WHERE id = ?').bind(id).first<any>();
     const qs = await loadQuestions(env.DB, id);
     const shortfall = Math.max(0, b.questionCount - qs.length);
     return json({
-      assessment: assessmentDto(a, { questionCount: qs.length }), questions: qs.map(teacherView), source: 'ai', sourceBased: true, created: true, status: 'draft',
+      assessment: assessmentDto(a, { questionCount: qs.length }), questions: qs.map(teacherView), source: 'ai', sourceBased: true, created: !target, replaced: !!target, status: 'draft',
       requestedQuestions: b.questionCount, shortfall, droppedQuestions: Object.values(dropped).reduce((t, n) => t + n, 0), dropReasons: dropped, requiresTeacherApproval: true,
       typeLabels: b.questionTypes.map((t) => QUESTION_TYPE_LABELS_FA[t]),
       notice: (shortfall ? `فقط ${qs.length} سؤال معتبر از روی منبع ساخته شد؛ سؤال‌های بی‌پشتوانه حذف شدند. می‌توانید دوباره بسازید یا سؤال را دستی اضافه کنید. ` : '')

@@ -283,6 +283,7 @@ class ApiService(private val c: ApiClient) {
             s.level?.let { put("level", it) }
             s.minutes?.let { put("suggestedMinutes", it) }
             s.notes?.trim()?.takeIf { it.isNotEmpty() }?.let { put("notes", it) }
+            s.replaceAssessmentId?.let { put("replaceAssessmentId", it) }
         }.toString()
         return c.request("POST", "/api/ai/assessment-draft-from-source", SourceDraftResult.serializer(), body, timeoutSeconds = 120)
     }

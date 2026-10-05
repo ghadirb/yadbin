@@ -77,6 +77,8 @@ data class SourceDraftSpec(
     val questionTypes: List<String> = listOf("multiple_choice"),
     val minutes: Int? = null,
     val notes: String? = null,
+    /** Edit mode: rebuild the questions of this (unpublished) assessment instead of creating a new one. */
+    val replaceAssessmentId: String? = null,
 )
 
 /** POST /ai/assessment-draft-from-source (201). Always a DRAFT: the teacher edits, previews and approves before anything is published. */

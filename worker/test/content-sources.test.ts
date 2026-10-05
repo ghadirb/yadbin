@@ -505,3 +505,37 @@ describe('stuck processing', () => {
     expect(old.statusMessage).toContain('دوباره ارسال کنید');
   });
 });
+
+// ═════════════════════════ editing a source-made assessment = rebuilding it in place ═════════════════════════
+
+describe('edit a source assessment: rebuild its questions (replaceAssessmentId)', () => {
+  it('keeps the same assessment, replaces the questions, drops the preview, keeps what the teacher did not resend', async () => {
+    const tc = await registerTeacher(t);
+    const d = await mkSource(tc);
+    const first = await draft(tc, { sourceId: d.source.id, sectionIds: [sec(d, 'فصل اول').id], title: 'آزمون اول', description: 'توضیح من', questionCount: 6, questionTypes: ['multiple_choice'] }, fakeProvider().provider);
+    expect(first.status, JSON.stringify(first.data)).toBe(201);
+    const id = first.data.assessment.id as string;
+    const assessmentsBefore = await count('SELECT COUNT(*) AS n FROM assessments WHERE teacher_id = ?', tc.id);
+
+    const again = await draft(tc, { sourceId: d.source.id, wholeSource: true, questionCount: 4, questionTypes: ['true_false', 'fill_blank'], level: 'advanced', replaceAssessmentId: id }, fakeProvider().provider);
+    expect(again.status, JSON.stringify(again.data)).toBe(201);
+    expect(again.data).toMatchObject({ created: false, replaced: true, status: 'draft' });
+    expect(again.data.assessment).toMatchObject({ id, title: 'آزمون اول', description: 'توضیح من', level: 'advanced', questionCount: 4 });
+    const detail = (await t.api('GET', `/api/assessments/${id}`, undefined, tc.token)).data;
+    expect(detail.questions).toHaveLength(4);
+    expect(detail.questions.every((q: any) => q.type !== 'multiple_choice')).toBe(true);
+    expect(await count('SELECT COUNT(*) AS n FROM assessments WHERE teacher_id = ?', tc.id)).toBe(assessmentsBefore); // nothing new was created
+  });
+  it('refuses a published assessment and someone else\'s assessment', async () => {
+    const tc = await registerTeacher(t), other = await registerTeacher(t);
+    const d = await mkSource(tc);
+    const first = await draft(tc, { sourceId: d.source.id, sectionIds: [sec(d, 'فصل اول').id], questionCount: 3 }, fakeProvider().provider);
+    const id = first.data.assessment.id as string;
+    const foreign = await draft(other, { sourceId: (await mkSource(other)).source.id, wholeSource: true, questionCount: 3, replaceAssessmentId: id }, fakeProvider().provider);
+    expect(foreign.status).toBe(404);
+    await t.db.prepare("UPDATE assessments SET status = 'published' WHERE id = ?").bind(id).run();
+    const locked = await draft(tc, { sourceId: d.source.id, wholeSource: true, questionCount: 3, replaceAssessmentId: id }, fakeProvider().provider);
+    expect(locked.status).toBe(409);
+    expect((await t.api('GET', `/api/assessments/${id}`, undefined, tc.token)).data.questions).toHaveLength(3); // untouched
+  });
+});
