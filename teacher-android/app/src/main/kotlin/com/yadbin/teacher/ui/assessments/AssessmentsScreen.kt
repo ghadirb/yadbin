@@ -84,10 +84,15 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf("all") }
-    var showCreate by rememberSaveable { mutableStateOf(false) }
-    var showAi by rememberSaveable { mutableStateOf(false) }
+    // The forms open ONLY from the «ساخت آزمون جدید» button (see SourcesScreen): not saved across restarts, and a tap right after the screen
+    // opened or right after a form closed is ignored.
+    var showCreate by remember { mutableStateOf(false) }
+    var showAi by remember { mutableStateOf(false) }
+    var lastChange by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    fun openCreate() { if (System.currentTimeMillis() - lastChange > 700) { showCreate = true; lastChange = System.currentTimeMillis() } }
+    fun closeForms() { showCreate = false; showAi = false; lastChange = System.currentTimeMillis() }
     androidx.activity.compose.BackHandler(enabled = !showCreate && !showAi, onBack = onBack)
-    androidx.activity.compose.BackHandler(enabled = showCreate || showAi) { showCreate = false; showAi = false }
+    androidx.activity.compose.BackHandler(enabled = showCreate || showAi) { closeForms() }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -102,16 +107,16 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     // The forms are full screens inside this screen (not floating dialogs), so Cancel / Back always closes them.
     if (showAi) {
         AiAssessmentForm(
-            onBack = { showAi = false },
-            onCreate = { p, sub, g, l, n -> showAi = false; vm.aiDraft(p, sub, g, l, n, onOpen) },
+            onBack = { closeForms() },
+            onCreate = { p, sub, g, l, n -> closeForms(); vm.aiDraft(p, sub, g, l, n, onOpen) },
         )
         return
     }
     if (showCreate) {
         CreateAssessmentForm(
-            onBack = { showCreate = false },
-            onAi = { showCreate = false; showAi = true },
-            onCreate = { t, sub, g, l, d, m -> showCreate = false; vm.create(t, sub, g, l, d, m, onOpen) },
+            onBack = { closeForms() },
+            onAi = { showCreate = false; showAi = true; lastChange = System.currentTimeMillis() },
+            onCreate = { t, sub, g, l, d, m -> closeForms(); vm.create(t, sub, g, l, d, m, onOpen) },
         )
         return
     }
@@ -119,7 +124,7 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     Scaffold(
         topBar = { YadbinTopBar("آزمون‌های من", onBack) },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { showCreate = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("ساخت آزمون جدید") }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { openCreate() }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("ساخت آزمون جدید") }) },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -134,7 +139,7 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
                     if (s.data.assessments.isEmpty()) {
-                        EmptyState("هنوز آزمونی در این بخش نیست.", "ساخت آزمون جدید") { showCreate = true }
+                        EmptyState("هنوز آزمونی در این بخش نیست. با دکمهٔ «ساخت آزمون جدید» پایین صفحه شروع کنید.")
                     } else {
                         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(s.data.assessments, key = { it.id }) { a -> AssessmentCard(a) { onOpen(a.id) } }

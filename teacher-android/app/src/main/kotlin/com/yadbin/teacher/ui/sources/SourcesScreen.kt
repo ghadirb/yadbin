@@ -1,4 +1,4 @@
-﻿@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.yadbin.teacher.ui.sources
 
@@ -105,9 +105,14 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
-    var showAdd by rememberSaveable { mutableStateOf(false) }
+    // The form opens ONLY from the «افزودن منبع» button, and never as a side effect of anything else: not saved across restarts, and a tap that
+    // arrives right after the screen opened or right after the form closed (a phantom / repeated tap) is ignored.
+    var showAdd by remember { mutableStateOf(false) }
+    var lastChange by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    fun openAdd() { if (System.currentTimeMillis() - lastChange > 700) { showAdd = true; lastChange = System.currentTimeMillis() } }
+    fun closeAdd() { showAdd = false; lastChange = System.currentTimeMillis() }
     androidx.activity.compose.BackHandler(enabled = !showAdd && busy == null, onBack = onBack)
-    androidx.activity.compose.BackHandler(enabled = showAdd) { showAdd = false }
+    androidx.activity.compose.BackHandler(enabled = showAdd) { closeAdd() }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -122,7 +127,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     // The add form is a full screen inside this screen (not a floating dialog), so Cancel / Back always closes it.
     if (showAdd) {
         val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 20.0)
-        AddSourceForm(maxMb, onBack = { showAdd = false }) { draft -> showAdd = false; vm.add(draft, onOpen) }
+        AddSourceForm(maxMb, onBack = { closeAdd() }) { draft -> closeAdd(); vm.add(draft, onOpen) }
         busy?.let { BusyDialog(it) }
         return
     }
@@ -130,7 +135,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
     Scaffold(
         topBar = { YadbinTopBar("کتاب‌ها و منابع درسی", onBack) },
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { showAdd = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("افزودن منبع") }) },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { openAdd() }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("افزودن منبع") }) },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             when (val s = state) {
@@ -141,7 +146,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
                     val list = s.data
                     if (list.sources.isEmpty()) {
                         Spacer(Modifier.height(32.dp))
-                        EmptyState("هنوز کتاب یا منبعی اضافه نکرده‌اید. فایل PDF، Word یا متن درس را اضافه کنید تا آزمون فقط از روی همان ساخته شود.", "افزودن اولین منبع") { showAdd = true }
+                        EmptyState("هنوز کتاب یا منبعی اضافه نکرده‌اید. با دکمهٔ «افزودن منبع» پایین صفحه، فایل PDF، Word یا متن درس را اضافه کنید تا آزمون فقط از روی همان ساخته شود.")
                     } else {
                         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             item { NoticeText("منابع فقط برای شما قابل مشاهده‌اند. آزمون ساخته‌شده از یک منبع فقط از متن همان منبع سؤال می‌گیرد و همیشه پیش‌نویس است؛ شما آن را بررسی و تأیید می‌کنید.") }
