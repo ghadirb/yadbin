@@ -14,6 +14,9 @@ function num(v: string | undefined, fallback: number): number {
   return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
+/** Monthly page budget of the paid image reader (vision model). Only an active Pro subscription may use it; Trial and Free never. */
+export const ocrPagesPro = (env: Env): number => num(env.OCR_PAGES_PRO, 400);
+
 export const trialDays = (env: Env): number => num(env.TRIAL_DAYS, DEFAULTS.TRIAL_DAYS);
 
 export function freeLimits(env: Env): FreeLimits {

@@ -4,7 +4,7 @@ import { handleCallback, createPayment, paymentStatus, confirmStorePurchase } fr
 import { paymentsAvailable } from '../payments/provider';
 import { freeLimits, trialDays } from '../subscription/config';
 import { getUserEntitlements } from '../subscription/entitlements';
-import { usageSnapshot } from '../subscription/gating';
+import { ocrQuota, usageSnapshot } from '../subscription/gating';
 import { HttpError, json, readJson } from '../utils/http';
 import { rateLimit, rateLimitIp } from '../utils/ratelimit';
 import { parse } from '../validation/schemas';
@@ -15,7 +15,7 @@ const planDto = (p: any) => ({ id: p.id, name: p.name, period: p.period, duratio
 export async function getSubscription(env: Env, teacherId: string) {
   await rateLimit(env, `sub:${teacherId}`, 60, 60);
   const ent = await getUserEntitlements(env, teacherId);
-  return json({ subscription: ent, usage: await usageSnapshot(env, teacherId), paymentsAvailable: paymentsAvailable(env) });
+  return json({ subscription: ent, usage: await usageSnapshot(env, teacherId), ocr: await ocrQuota(env, teacherId, ent), paymentsAvailable: paymentsAvailable(env) });
 }
 
 /** GET /api/plans — public price list. A null price means "not decided yet". */

@@ -12,6 +12,8 @@ export interface Env {
   FREE_MAX_STUDENTS?: string;
   FREE_MAX_ASSESSMENTS?: string;
   FREE_AI_REQUESTS?: string;
+  /** Page-image reading (scanned / broken-font PDFs) is a PAID feature: pages per month for an active Pro subscription (default 400). Trial and Free get none. */
+  OCR_PAGES_PRO?: string;
   /** Payment provider id. Unset / 'none' = online payment not available yet. No real gateway is wired in this version. */
   PAYMENT_PROVIDER?: string;
   /** Myket in-app purchase (PAYMENT_PROVIDER='myket'). Public RSA key from the Myket developer panel (base64 SPKI) — public, may be a var. */

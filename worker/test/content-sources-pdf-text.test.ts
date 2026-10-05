@@ -73,32 +73,110 @@ describe('PDF text extracted on the device', () => {
   });
 });
 
-describe('reading page images with the vision model', () => {
-  it('turns N images into exactly N cleaned pages and counts ONE AI use for the first batch only', async () => {
+const makePro = (id: string) => t.db.prepare("INSERT INTO subscriptions (id, teacher_id, plan_id, status, started_at, expires_at, created_at, updated_at) VALUES (?, ?, 'pro_monthly', 'active', ?, ?, ?, ?)")
+  .bind(`sub-${id}`, id, new Date().toISOString(), new Date(Date.now() + 30 * 86400_000).toISOString(), new Date().toISOString(), new Date().toISOString()).run();
+const ocrUsed = async (id: string) => (await t.db.prepare("SELECT count FROM usage_counters WHERE teacher_id = ? AND feature = 'ocr_pages'").bind(id).first<{ count: number }>())?.count ?? 0;
+const HASH = 'a'.repeat(64);
+const HASH2 = 'b'.repeat(64);
+
+describe('reading page images with the vision model (paid feature, per-page quota, cache)', () => {
+  it('Pro: turns N images into exactly N cleaned pages and counts N pages (not one use per book)', async () => {
     const tc = await registerTeacher(t);
-    await expireTrial(tc.id); // trial = unlimited and uncounted; the free plan is metered
+    await makePro(tc.id);
     const reply = '```json\n{"pages":["فصل اول\\nمتن صفحه ۱\\u0007","  متن صفحه ۲ "]}\n```';
-    const r = await call(tc, { images: [jpegB64, jpegB64], batchIndex: 0 }, reply);
+    const r = await call(tc, { images: [jpegB64, jpegB64] }, reply);
     expect(r.status, JSON.stringify(r.data)).toBe(200);
     expect(r.data.pages).toEqual(['فصل اول\nمتن صفحه ۱', 'متن صفحه ۲']);
-    expect(await aiUsed(tc.id)).toBe(1);
-    await call(tc, { images: [jpegB64, jpegB64], batchIndex: 1 }, reply);
-    await call(tc, { images: [jpegB64, jpegB64], batchIndex: 2 }, reply);
-    expect(await aiUsed(tc.id)).toBe(1);
+    expect(r.data.charged).toBe(2);
+    expect(await ocrUsed(tc.id)).toBe(2);
+    await call(tc, { images: [jpegB64, jpegB64] }, reply);
+    expect(await ocrUsed(tc.id)).toBe(4);
+    expect(await aiUsed(tc.id)).toBe(0); // the old per-book AI counter is untouched
   });
 
-  it('a free teacher whose monthly AI quota is used up gets the plain limit message and nothing is sent to the model', async () => {
+  it('Free, Trial and expired accounts cannot use the image reader at all and nothing reaches the model', async () => {
+    const trial = await registerTeacher(t); // a brand-new account is on the 7-day Trial
+    const expired = await registerTeacher(t);
+    await expireTrial(expired.id);
+    for (const tc of [trial, expired]) {
+      let called = false;
+      try { await readPages(asReq({ images: [jpegB64] }), { DB: t.db } as any, tc.id, async () => { called = true; return '{"pages":["x"]}'; }); expect.unreachable(); }
+      catch (e: any) { expect(e.status).toBe(403); expect(e.code).toBe('FEATURE_LIMIT_REACHED'); expect((e.extra as any)?.feature).toBe('ocr'); expect(e.message).toContain('اشتراک'); }
+      expect(called).toBe(false);
+      expect(await ocrUsed(tc.id)).toBe(0);
+    }
+    const look = await t.api('POST', '/api/content-sources/read-pages/cache', { fileHash: HASH, pageNumbers: [1] }, trial.token);
+    expect(look.status).toBe(403);
+  });
+
+  it('the monthly page budget is enforced per page: a batch that does not fit is refused before the model is called', async () => {
     const tc = await registerTeacher(t);
-    await expireTrial(tc.id);
-    await t.db.prepare("INSERT INTO usage_counters (teacher_id, feature, period, count) VALUES (?, 'ai', ?, 3)").bind(tc.id, new Date().toISOString().slice(0, 7)).run();
+    await makePro(tc.id);
+    await t.db.prepare("INSERT INTO usage_counters (teacher_id, feature, period, count) VALUES (?, 'ocr_pages', ?, 399)").bind(tc.id, new Date().toISOString().slice(0, 7)).run();
     let called = false;
-    try { await readPages(asReq({ images: [jpegB64] }), { DB: t.db } as any, tc.id, async () => { called = true; return '{"pages":["x"]}'; }); expect.unreachable(); }
-    catch (e: any) { expect(e.status).toBe(403); expect(e.code).toBe('FEATURE_LIMIT_REACHED'); }
+    try { await readPages(asReq({ images: [jpegB64, jpegB64] }), { DB: t.db } as any, tc.id, async () => { called = true; return '{"pages":["a","b"]}'; }); expect.unreachable(); }
+    catch (e: any) { expect(e.status).toBe(403); expect(e.extra).toMatchObject({ feature: 'ocr', remaining: 1, limit: 400 }); }
     expect(called).toBe(false);
+    const one = await call(tc, { images: [jpegB64] }, '{"pages":["آخرین صفحه"]}');
+    expect(one.status).toBe(200);
+    expect(await ocrUsed(tc.id)).toBe(400);
+  });
+
+  it('cache: pages of the same file are read once, then served free to the same or another Pro teacher', async () => {
+    const a = await registerTeacher(t); const b = await registerTeacher(t);
+    await makePro(a.id); await makePro(b.id);
+    const first = await call(a, { images: [jpegB64, jpegB64], fileHash: HASH, pageNumbers: [5, 6] }, '{"pages":["متن پنج","متن شش"]}');
+    expect(first.data.charged).toBe(2);
+    expect(first.data.fromCache).toEqual([false, false]);
+    // another teacher, same file: pages 5 and 6 cached, 7 is new → the model only gets ONE image
+    let sent = 0;
+    const res = await readPages(asReq({ images: [jpegB64, jpegB64, jpegB64], fileHash: HASH, pageNumbers: [5, 6, 7] }), { DB: t.db } as any, b.id, async (_e, imgs) => { sent = imgs.length; return '{"pages":["متن هفت"]}'; });
+    const d: any = await res.json();
+    expect(sent).toBe(1);
+    expect(d.pages).toEqual(['متن پنج', 'متن شش', 'متن هفت']);
+    expect(d.fromCache).toEqual([true, true, false]);
+    expect(d.charged).toBe(1);
+    expect(await ocrUsed(b.id)).toBe(1);
+    // everything cached → the model is not called at all and nothing is charged
+    let called = false;
+    const all: any = await (await readPages(asReq({ images: [jpegB64], fileHash: HASH, pageNumbers: [5] }), { DB: t.db } as any, b.id, async () => { called = true; return null; })).json();
+    expect(called).toBe(false); expect(all.pages).toEqual(['متن پنج']); expect(all.charged).toBe(0);
+    // a different file never hits the cache
+    const other = await call(b, { images: [jpegB64], fileHash: HASH2, pageNumbers: [5] }, '{"pages":["کتاب دیگر"]}');
+    expect(other.data.pages).toEqual(['کتاب دیگر']);
+  });
+
+  it('cache lookup returns only the requested pages of that exact file hash', async () => {
+    const a = await registerTeacher(t);
+    await makePro(a.id);
+    await call(a, { images: [jpegB64, jpegB64], fileHash: 'c'.repeat(64), pageNumbers: [1, 2] }, '{"pages":["یک","دو"]}');
+    const r = await t.api('POST', '/api/content-sources/read-pages/cache', { fileHash: 'c'.repeat(64), pageNumbers: [1, 2, 3] }, a.token);
+    expect(r.status, JSON.stringify(r.data)).toBe(200);
+    expect(r.data.pages).toEqual({ '1': 'یک', '2': 'دو' });
+    const wrong = await t.api('POST', '/api/content-sources/read-pages/cache', { fileHash: 'd'.repeat(64), pageNumbers: [1] }, a.token);
+    expect(wrong.data.pages).toEqual({});
+    expect((await t.api('POST', '/api/content-sources/read-pages/cache', { fileHash: 'xyz', pageNumbers: [1] }, a.token)).status).toBe(400);
+  });
+
+  it('a mismatched fileHash/pageNumbers pair is rejected', async () => {
+    const tc = await registerTeacher(t);
+    await makePro(tc.id);
+    expect((await call(tc, { images: [jpegB64, jpegB64], fileHash: HASH, pageNumbers: [1] }, '{"pages":["a","b"]}')).status).toBe(400);
+    expect((await call(tc, { images: [jpegB64], fileHash: HASH }, '{"pages":["a"]}')).status).toBe(400);
+  });
+
+  it('GET /api/subscription reports the image-reading quota (disabled for Trial, 400 pages for Pro)', async () => {
+    const trial = await registerTeacher(t);
+    const pro = await registerTeacher(t); await makePro(pro.id);
+    const a = await t.api('GET', '/api/subscription', undefined, trial.token);
+    expect(a.data.ocr).toMatchObject({ enabled: false, limit: 0, remaining: 0 });
+    const b = await t.api('GET', '/api/subscription', undefined, pro.token);
+    expect(b.data.ocr).toMatchObject({ enabled: true, limit: 400, used: 0, remaining: 400 });
   });
 
   it('rejects junk input, too many images, a wrong page count from the model and a missing provider — nothing is counted', async () => {
     const tc = await registerTeacher(t);
+    await makePro(tc.id);
     expect((await call(tc, {}, '{"pages":[]}')).status).toBe(400);
     expect((await call(tc, { images: ['<script>'.padEnd(200, 'x')] }, '{"pages":["a"]}')).status).toBe(400);
     expect((await call(tc, { images: Array(VISION.maxImages + 1).fill(jpegB64) }, '{"pages":[]}')).status).toBe(400);
@@ -106,12 +184,13 @@ describe('reading page images with the vision model', () => {
     expect(bad.status).toBe(502); expect(bad.data.message).toContain('دوباره');
     const none = await call(tc, { images: [jpegB64] }, null);
     expect(none.status).toBe(503); expect(none.data.error).toBe('ai_unavailable');
-    expect(await aiUsed(tc.id)).toBe(0);
+    expect(await ocrUsed(tc.id)).toBe(0);
   });
 
-  it('is login-only, and answers 503 (not a crash) when no AvalAI key is configured', async () => {
+  it('is login-only, and answers 503 (not a crash) for a Pro teacher when no AvalAI key is configured', async () => {
     expect((await t.api('POST', '/api/content-sources/read-pages', { images: [jpegB64] })).status).toBe(401);
     const tc = await registerTeacher(t);
+    await makePro(tc.id);
     const r = await t.api('POST', '/api/content-sources/read-pages', { images: [jpegB64] }, tc.token);
     expect(r.status).toBe(503);
   });
