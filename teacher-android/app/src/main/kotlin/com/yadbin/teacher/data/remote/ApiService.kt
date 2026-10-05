@@ -255,6 +255,16 @@ class ApiService(private val c: ApiClient) {
     /** Sends the raw file. The server reads the text and drops the file (only the extracted text is stored). */
     suspend fun processContentSource(id: String, bytes: ByteArray): ContentSourceDetail =
         c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), rawBody = bytes, timeoutSeconds = 180)
+    /** PDF whose text the phone already read (pages joined by \\f): the Worker does no PDF parsing. Used by «ارسال دوبارهٔ فایل». */
+    suspend fun processContentSourceText(id: String, text: String): ContentSourceDetail {
+        val body = buildJsonObject { put("text", text) }.toString()
+        return c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), body, timeoutSeconds = 90)
+    }
+    /** Page images (base64 JPEG, at most 4) → their text. [batchIndex] 0 counts as one AI use for the whole book. */
+    suspend fun readSourcePages(images: List<String>, batchIndex: Int): List<String> {
+        val body = buildJsonObject { put("images", JsonArray(images.map { JsonPrimitive(it) })); put("batchIndex", batchIndex) }.toString()
+        return c.request("POST", "/api/content-sources/read-pages", ReadPagesResult.serializer(), body, timeoutSeconds = 120).pages
+    }
     suspend fun contentSourceSection(id: String, sectionId: String): ContentSectionText =
         c.request("GET", "/api/content-sources/$id/sections/$sectionId", ContentSectionText.serializer())
     /** AI makes a DRAFT from the selected part of the teacher's book only (never published). No student data is sent. */

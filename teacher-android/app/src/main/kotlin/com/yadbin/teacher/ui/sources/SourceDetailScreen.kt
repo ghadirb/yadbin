@@ -21,6 +21,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yadbin.teacher.core.network.ApiException
 import com.yadbin.teacher.core.network.NetworkException
+import com.yadbin.teacher.core.pdf.PdfReadResult
+import com.yadbin.teacher.core.pdf.PdfReader
 import com.yadbin.teacher.core.utils.SourceFiles
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.data.repository.Repository
@@ -36,7 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class SourceDetailViewModel(private val repo: Repository, private val id: String) : ViewModel() {
+class SourceDetailViewModel(private val repo: Repository, private val id: String, private val pdf: PdfReader) : ViewModel() {
     private val _state = MutableStateFlow<Ui<ContentSourceDetail>>(Ui.Loading)
     val state: StateFlow<Ui<ContentSourceDetail>> = _state.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
@@ -73,7 +75,13 @@ class SourceDetailViewModel(private val repo: Repository, private val id: String
         viewModelScope.launch {
             _busy.value = "در حال ارسال و خواندن فایل…"
             try {
-                val d = repo.processContentSource(id, file.bytes)
+                val d = if (file.type == "pdf") {
+                    // Same as adding a new PDF: read on the phone, send only the text.
+                    val r = pdf.read(file.bytes) { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }
+                    if (r is PdfReadResult.Failed) { _message.value = r.message; _busy.value = null; return@launch }
+                    _busy.value = "در حال ذخیرهٔ متن کتاب…"
+                    repo.processContentSourceText(id, (r as PdfReadResult.Text).text)
+                } else repo.processContentSource(id, file.bytes)
                 _state.value = Ui.Ready(d)
                 if (d.duplicate) _message.value = "این منبع قبلاً پردازش شده است."
             } catch (e: ApiException) { _message.value = errorText(e); refresh() }
@@ -95,7 +103,7 @@ fun SourceDetailScreen(sourceId: String, onBack: () -> Unit, onMakeQuiz: (String
     val c = LocalContainer.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val vm: SourceDetailViewModel = viewModel(key = "source-$sourceId", factory = VmFactory { SourceDetailViewModel(c.repository, sourceId) })
+    val vm: SourceDetailViewModel = viewModel(key = "source-$sourceId", factory = VmFactory { SourceDetailViewModel(c.repository, sourceId, c.pdfReader) })
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -166,7 +174,7 @@ fun SourceDetailScreen(sourceId: String, onBack: () -> Unit, onMakeQuiz: (String
                             NoticeText("فصل‌ها و درس‌ها با اطمینان کامل تشخیص داده نشد. متن را بررسی کنید؛ هنگام ساخت آزمون می‌توانید کل متن یا بخش دلخواه را خودتان انتخاب کنید.")
                         }
                         if (src.status == "needs_ocr") item {
-                            NoticeText("برای PDF اسکن‌شده فعلاً راهی جز وارد کردن یک PDF متنی یا خود متن کتاب نیست. «افزودن منبع ← وارد کردن متن» را امتحان کنید.")
+                            NoticeText("متن این منبع خوانده نشد. «ارسال دوبارهٔ فایل» را بزنید تا صفحه‌ها این بار از روی تصویر خوانده شوند، یا متن کتاب را با «افزودن منبع ← وارد کردن متن» بدهید.")
                         }
                         if (tree.flatten().isNotEmpty()) {
                             item { SectionTitle("فصل‌ها و درس‌ها") }

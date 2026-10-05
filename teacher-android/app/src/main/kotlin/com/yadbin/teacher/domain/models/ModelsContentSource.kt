@@ -89,3 +89,6 @@ data class SourceDraftSpec(
     val droppedQuestions: Int = 0,
     val notice: String = "",
 )
+
+/** POST /api/content-sources/read-pages — text of the page images the phone sent (same order, same count). Nothing is stored on the server. */
+@Serializable data class ReadPagesResult(val pages: List<String> = emptyList())

@@ -88,6 +88,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.security:security-crypto:1.0.0")
     implementation("com.google.zxing:core:3.5.3")
+    // Reads the text layer of a book PDF on the phone (the Worker never parses PDFs: free-plan CPU limit). Page images for scans use the built-in PdfRenderer.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     // Version pinned to the one in the Myket docs.
     implementation("com.github.myketstore:myket-billing-client:1.6")
 

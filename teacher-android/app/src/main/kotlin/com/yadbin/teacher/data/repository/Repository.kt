@@ -118,6 +118,8 @@ class Repository(
     suspend fun updateContentSource(id: String, title: String, subject: String?, gradeCode: String?, description: String?) = api.updateContentSource(id, title, subject, gradeCode, description)
     suspend fun deleteContentSource(id: String) = api.deleteContentSource(id)
     suspend fun processContentSource(id: String, bytes: ByteArray) = api.processContentSource(id, bytes)
+    suspend fun processContentSourceText(id: String, text: String) = api.processContentSourceText(id, text)
+    suspend fun readSourcePages(images: List<String>, batchIndex: Int) = api.readSourcePages(images, batchIndex)
     suspend fun contentSourceSection(id: String, sectionId: String) = api.contentSourceSection(id, sectionId)
     suspend fun aiAssessmentDraftFromSource(spec: SourceDraftSpec) = api.aiAssessmentDraftFromSource(spec)
 

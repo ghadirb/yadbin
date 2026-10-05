@@ -25,6 +25,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yadbin.teacher.core.network.ApiException
 import com.yadbin.teacher.core.network.NetworkException
+import com.yadbin.teacher.core.pdf.PdfReadResult
+import com.yadbin.teacher.core.pdf.PdfReader
 import com.yadbin.teacher.core.utils.SourceFiles
 import com.yadbin.teacher.core.utils.fa
 import com.yadbin.teacher.data.repository.Repository
@@ -47,7 +49,7 @@ data class NewSource(
     val file: PickResult.Ok?,
 )
 
-class SourcesViewModel(private val repo: Repository) : ViewModel() {
+class SourcesViewModel(private val repo: Repository, private val pdf: PdfReader) : ViewModel() {
     private val _state = MutableStateFlow<Ui<ContentSourceList>>(Ui.Loading)
     val state: StateFlow<Ui<ContentSourceList>> = _state.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
@@ -72,10 +74,19 @@ class SourcesViewModel(private val repo: Repository) : ViewModel() {
                     val d = repo.createContentSource(draft.title, draft.subject, draft.gradeCode, draft.description, "paste", null, draft.text)
                     createdId = d.source.id
                 } else {
-                    val d = repo.createContentSource(draft.title, draft.subject, draft.gradeCode, draft.description, file.type, file.name, null)
-                    val id = d.source.id
-                    createdId = id
-                    repo.processContentSource(id, file.bytes)
+                    if (file.type == "pdf") {
+                        // The PDF is read ON THE PHONE (text layer, or page images → vision) and only its text is sent: the Worker never parses a PDF.
+                        val r = pdf.read(file.bytes) { done, total, vision -> _busy.value = pdfProgress(done, total, vision) }
+                        if (r is PdfReadResult.Failed) { _message.value = r.message; _busy.value = null; return@launch }
+                        _busy.value = "در حال ذخیرهٔ متن کتاب…"
+                        val d = repo.createContentSource(draft.title, draft.subject, draft.gradeCode, draft.description, "pdf", file.name, (r as PdfReadResult.Text).text)
+                        createdId = d.source.id
+                    } else {
+                        val d = repo.createContentSource(draft.title, draft.subject, draft.gradeCode, draft.description, file.type, file.name, null)
+                        val id = d.source.id
+                        createdId = id
+                        repo.processContentSource(id, file.bytes)
+                    }
                 }
             } catch (e: ApiException) { _message.value = errorText(e) }
             catch (e: NetworkException) { _message.value = errorText(e) }
@@ -86,6 +97,10 @@ class SourcesViewModel(private val repo: Repository) : ViewModel() {
         }
     }
 }
+
+/** «در حال خواندن صفحهٔ ۱۲ از ۱۵۳…» — shown while a PDF is read on the phone (also used by the source page). */
+internal fun pdfProgress(done: Int, total: Int, vision: Boolean): String =
+    (if (vision) "در حال خواندن تصویر صفحه‌ها: " else "در حال خواندن متن کتاب: ") + "${done.fa()} از ${total.fa()}"
 
 @Composable
 fun SourceStatusChip(s: ContentSourceInfo) {
@@ -101,7 +116,7 @@ fun SourceStatusChip(s: ContentSourceInfo) {
 @Composable
 fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -> Unit) {
     val c = LocalContainer.current
-    val vm: SourcesViewModel = viewModel(factory = VmFactory { SourcesViewModel(c.repository) })
+    val vm: SourcesViewModel = viewModel(factory = VmFactory { SourcesViewModel(c.repository, c.pdfReader) })
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -239,7 +254,7 @@ private fun AddSourceForm(maxMegabytes: Double, onBack: () -> Unit, onAdd: (NewS
                     when (val p = picked) {
                         is PickResult.Ok -> Text("فایل انتخاب‌شده: ${p.name}", style = MaterialTheme.typography.bodySmall)
                         is PickResult.Bad -> Text(p.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        null -> NoticeText("PDF متنی، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. PDF اسکن‌شده فعلاً پشتیبانی نمی‌شود. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
+                        null -> NoticeText("PDF، Word با پسوند docx یا متن ساده پشتیبانی می‌شود؛ حداکثر ${maxMegabytes.toInt().fa()} مگابایت. متن PDF روی گوشی خوانده می‌شود؛ اگر خراب یا اسکن‌شده باشد، صفحه‌ها (تا ۱۲۰ صفحه) از روی تصویر خوانده می‌شوند و این کار کمی طول می‌کشد. فایل خام نگهداری نمی‌شود و فقط متن آن ذخیره می‌شود.")
                     }
                 }
             Button(

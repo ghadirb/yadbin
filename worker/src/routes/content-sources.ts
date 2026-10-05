@@ -136,12 +136,19 @@ export async function processSourceRoute(req: Request, env: Env, teacherId: stri
   const s = await getOwnedSource(env.DB, teacherId, id);
   if (USABLE_STATUSES.has(s.status)) return detail(env, teacherId, id, 200, { duplicate: true });
   await rateLimit(env, `src-process:${teacherId}`, 20, 3600);
-  const len = Number(req.headers.get('Content-Length') ?? 0);
-  if (len > LIMITS.maxFileBytes) throw new HttpError(413, 'file_too_large', EXTRACT_MESSAGES_FA.too_large);
-  const bytes = new Uint8Array(await req.arrayBuffer());
-  if (bytes.length > LIMITS.maxFileBytes) throw new HttpError(413, 'file_too_large', EXTRACT_MESSAGES_FA.too_large);
-  if (!bytes.length) throw new HttpError(400, 'validation_error', 'فایل ارسال نشده است.');
-  const input: ExtractInput = { bytes };
+  let input: ExtractInput;
+  if (s.file_type === 'pdf' && (req.headers.get('Content-Type') ?? '').includes('application/json')) {
+    // PDF whose text the phone already read (pages joined by \f): no PDF parsing in the Worker (same path as POST /content-sources with fileType=pdf).
+    const b = parse(z.object({ text: z.string({ error: 'متن صفحه‌ها ارسال نشده است.' }).max(1_200_000, 'متن خیلی بلند است.') }), await readLargeJson(req));
+    input = { text: b.text };
+  } else {
+    const len = Number(req.headers.get('Content-Length') ?? 0);
+    if (len > LIMITS.maxFileBytes) throw new HttpError(413, 'file_too_large', EXTRACT_MESSAGES_FA.too_large);
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    if (bytes.length > LIMITS.maxFileBytes) throw new HttpError(413, 'file_too_large', EXTRACT_MESSAGES_FA.too_large);
+    if (!bytes.length) throw new HttpError(400, 'validation_error', 'فایل ارسال نشده است.');
+    input = { bytes };
+  }
   const ran = await processSource(env, teacherId, { id, file_type: s.file_type as FileType }, input);
   if (!ran) return detail(env, teacherId, id, 200, { duplicate: true }); // another request is already processing it
   return detail(env, teacherId, id);

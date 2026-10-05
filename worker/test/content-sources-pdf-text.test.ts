@@ -37,6 +37,16 @@ describe('PDF text extracted on the device', () => {
     expect(pages.results.map((x) => x.p)).toEqual([1, 2, 3]);
   });
 
+  it('resend: POST /:id/process with JSON {text} reads a pdf source from phone text (no file bytes, no PDF parsing in the Worker)', async () => {
+    const tc = await registerTeacher(t);
+    const a = await t.api('POST', '/api/content-sources', { title: 'ارسال دوباره', fileType: 'pdf', originalFileName: 'riazi2.pdf' }, tc.token);
+    expect(a.data.source.status).toBe('pending_file');
+    const r = await t.api('POST', `/api/content-sources/${a.data.source.id}/process`, { text: PAGES }, tc.token);
+    expect(r.status, JSON.stringify(r.data)).toBe(200);
+    expect(['ready', 'needs_review']).toContain(r.data.source.status);
+    expect(r.data.source.pageCount).toBe(3);
+  });
+
   it('a pdf without text (scan) still waits for a file; an empty-text pdf ends as needs_ocr, not as a crash', async () => {
     const tc = await registerTeacher(t);
     const a = await t.api('POST', '/api/content-sources', { title: 'اسکن', fileType: 'pdf' }, tc.token);
