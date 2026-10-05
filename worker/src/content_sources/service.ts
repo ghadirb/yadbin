@@ -4,8 +4,9 @@ import { ExtractError, EXTRACT_MESSAGES_FA, extractRawText, LIMITS, STATUS_FOR_E
 import { processText } from './text';
 
 export const NEEDS_REVIEW_MESSAGE_FA = 'فصل‌ها و درس‌های این منبع به‌طور قطعی تشخیص داده نشد. می‌توانید کل متن را انتخاب کنید یا فقط بخشی از آن را مشخص کنید.';
-/** A source stuck in «processing» for longer than this (a killed request) may be processed again. */
-const STALE_PROCESSING_MS = 10 * 60_000;
+/** A source stuck in «processing» for longer than this (a killed request: out of CPU / memory) is reported as failed and may be sent again. */
+export const STALE_PROCESSING_MS = 5 * 60_000;
+export const STALE_PROCESSING_MESSAGE_FA = 'پردازش این فایل کامل نشد؛ احتمالاً برای سرور سنگین است. دوباره ارسال کنید و اگر باز هم ناموفق بود، کتاب را به چند فایل کوچک‌تر (مثلاً فصل‌به‌فصل) تقسیم کنید.';
 const BATCH = 40;
 
 async function finish(env: Env, id: string, status: string, message: string | null, counts: { chars: number; chunks: number; pages: number | null } = { chars: 0, chunks: 0, pages: null }) {

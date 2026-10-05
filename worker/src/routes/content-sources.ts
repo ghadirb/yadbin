@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env } from '../env';
 import { gradeByCode, isGradeCode } from '../education/catalog';
 import { EXTRACT_MESSAGES_FA, FILE_TYPES, LIMITS, type ExtractInput, type FileType } from '../content_sources/extract';
-import { processSource } from '../content_sources/service';
+import { processSource, STALE_PROCESSING_MESSAGE_FA, STALE_PROCESSING_MS } from '../content_sources/service';
 import { SECTION_TYPE_LABELS_FA, type SectionType } from '../content_sources/text';
 import { HttpError, json, notFound } from '../utils/http';
 import { newId, nowIso } from '../utils/ids';
@@ -49,7 +49,10 @@ export async function getOwnedSource(db: D1Database, teacherId: string, id: stri
   return row;
 }
 
-export function sourceDto(s: any) {
+export function sourceDto(s0: any) {
+  // A request that was killed half-way leaves «processing» behind forever: after a few minutes show it as failed so the teacher can send the file again.
+  const stuck = s0.status === 'processing' && Date.now() - Date.parse(s0.updated_at) > STALE_PROCESSING_MS;
+  const s = stuck ? { ...s0, status: 'failed', status_message: STALE_PROCESSING_MESSAGE_FA } : s0;
   return {
     id: s.id, title: s.title, description: s.description ?? null, subject: s.subject ?? null,
     gradeCode: s.grade_code ?? null, gradeLabel: gradeByCode(s.grade_code)?.label ?? null,

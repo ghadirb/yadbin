@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createEnv, registerTeacher, type TestEnv } from './helpers';
 import { makeDocx, makePdf } from './content-fixtures';
 import { ExtractError, extractRawText, LIMITS, looksGarbled } from '../src/content_sources/extract';
+import { sourceDto } from '../src/routes/content-sources';
 import { buildFacts, capacityFor, evidenceSupported, parseSourceModelOutput, pickChunks, runSourceDraft, validateSourceQuestions, type ChunkRow } from '../src/ai/assessment-from-source';
 
 /** Content Sources (کتاب‌ها و منابع درسی) end to end: source → sections → grounded AI draft → preview → publish → student → report.
@@ -491,5 +492,16 @@ describe('Test 20-24: AI usage, rate limits, failures and retries', () => {
     let last = 0;
     for (let i = 0; i < 31; i++) last = (await t.api('POST', '/api/content-sources', { title: `منبع ${i}`, fileType: 'paste', text: 'متن کوتاه' }, burst.token)).status;
     expect(last).toBe(429);
+  });
+});
+
+describe('stuck processing', () => {
+  it('is reported as failed (and so can be sent again) after a few minutes', () => {
+    const base = { id: 'x', title: 't', file_type: 'pdf', status: 'processing', char_count: 0, chunk_count: 0, created_at: '', grade_code: null };
+    expect(sourceDto({ ...base, updated_at: new Date().toISOString() }).status).toBe('processing');
+    const old = sourceDto({ ...base, updated_at: new Date(Date.now() - 6 * 60_000).toISOString() });
+    expect(old.status).toBe('failed');
+    expect(old.usable).toBe(false);
+    expect(old.statusMessage).toContain('دوباره ارسال کنید');
   });
 });
