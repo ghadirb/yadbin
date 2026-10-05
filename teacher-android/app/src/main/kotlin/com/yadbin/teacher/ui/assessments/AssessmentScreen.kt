@@ -320,8 +320,9 @@ private fun QuestionDialog(initial: QuestionDraft, onDismiss: () -> Unit, onSave
     var correctBool by remember { mutableStateOf(initial.correctBool) }
     var answers by remember { mutableStateOf(initial.answers) }
     var explanation by remember { mutableStateOf(initial.explanation) }
+    val hasDuplicates = options.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.let { it.size != it.toSet().size }
     val valid = text.isNotBlank() && when (initial.type) {
-        "multiple_choice" -> options.all { it.isNotBlank() } && correctIndex != null
+        "multiple_choice" -> options.all { it.isNotBlank() } && correctIndex != null && !hasDuplicates
         "true_false" -> correctBool != null
         else -> answers.any { it.isNotBlank() }
     }
@@ -334,6 +335,7 @@ private fun QuestionDialog(initial: QuestionDraft, onDismiss: () -> Unit, onSave
                 when (initial.type) {
                     "multiple_choice" -> {
                         Text("گزینه‌ها (پاسخ صحیح را انتخاب کنید)", style = MaterialTheme.typography.labelMedium)
+                        if (hasDuplicates) Text("گزینه‌ها نباید تکراری باشند.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         options.forEachIndexed { i, o ->
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 RadioButton(selected = correctIndex == i, onClick = { correctIndex = i })

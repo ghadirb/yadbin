@@ -52,6 +52,8 @@ class AssessmentsViewModel(private val repo: Repository) : ViewModel() {
     val state: StateFlow<Ui<AssessmentList>> = _state.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
     private var filter = "all"
 
     init { refresh() }
@@ -59,20 +61,22 @@ class AssessmentsViewModel(private val repo: Repository) : ViewModel() {
     fun setFilter(f: String) { filter = f; refresh() }
     fun refresh() { viewModelScope.launch { if (_state.value !is Ui.Ready) _state.value = Ui.Loading; _state.value = loadUi { repo.assessments(filter) } } }
 
-    fun create(title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?, onCreated: (String) -> Unit) {
-        viewModelScope.launch {
-            try { onCreated(repo.createAssessment(title, subject, gradeCode, level, description, minutes).assessment.id) }
-            catch (e: ApiException) { _message.value = errorText(e) }
-            catch (e: NetworkException) { _message.value = errorText(e) }
-        }
-    }
+    /** The form stays open (with its text) while the request runs; it closes only on success, so an error never loses what the teacher typed. */
+    fun create(title: String, subject: String?, gradeCode: String?, level: String?, description: String?, minutes: Int?, onCreated: (String) -> Unit) =
+        launchBusy({ repo.createAssessment(title, subject, gradeCode, level, description, minutes).assessment.id }, onCreated)
 
     /** AI only writes a DRAFT; the teacher still edits, previews and approves. If AI is down, manual creation keeps working. */
-    fun aiDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int, onCreated: (String) -> Unit) {
+    fun aiDraft(prompt: String, subject: String?, gradeCode: String?, level: String?, count: Int, onCreated: (String) -> Unit) =
+        launchBusy({ repo.aiAssessmentDraft(prompt, subject, gradeCode, level, count).assessment.id }, onCreated)
+
+    private fun launchBusy(block: suspend () -> String, onCreated: (String) -> Unit) {
+        if (_busy.value) return
         viewModelScope.launch {
-            try { onCreated(repo.aiAssessmentDraft(prompt, subject, gradeCode, level, count).assessment.id) }
+            _busy.value = true
+            try { onCreated(block()) }
             catch (e: ApiException) { _message.value = errorText(e) }
             catch (e: NetworkException) { _message.value = errorText(e) }
+            finally { _busy.value = false }
         }
     }
 }
@@ -83,6 +87,7 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val vm: AssessmentsViewModel = viewModel(factory = VmFactory { AssessmentsViewModel(c.repository) })
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val busy by vm.busy.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf("all") }
     // The forms open ONLY from the «ساخت آزمون جدید» button (see SourcesScreen): not saved across restarts, and a tap right after the screen
     // opened or right after a form closed is ignored.
@@ -92,7 +97,7 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     fun openCreate() { if (System.currentTimeMillis() - lastChange > 700) { showCreate = true; lastChange = System.currentTimeMillis() } }
     fun closeForms() { showCreate = false; showAi = false; lastChange = System.currentTimeMillis() }
     androidx.activity.compose.BackHandler(enabled = !showCreate && !showAi, onBack = onBack)
-    androidx.activity.compose.BackHandler(enabled = showCreate || showAi) { closeForms() }
+    androidx.activity.compose.BackHandler(enabled = (showCreate || showAi) && !busy) { closeForms() }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
 
@@ -108,7 +113,8 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     if (showAi) {
         AiAssessmentForm(
             onBack = { closeForms() },
-            onCreate = { p, sub, g, l, n -> closeForms(); vm.aiDraft(p, sub, g, l, n, onOpen) },
+            busy = busy, snackbar = snackbar,
+            onCreate = { p, sub, g, l, n -> vm.aiDraft(p, sub, g, l, n) { id -> closeForms(); onOpen(id) } },
         )
         return
     }
@@ -116,7 +122,8 @@ fun AssessmentsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         CreateAssessmentForm(
             onBack = { closeForms() },
             onAi = { showCreate = false; showAi = true; lastChange = System.currentTimeMillis() },
-            onCreate = { t, sub, g, l, d, m -> closeForms(); vm.create(t, sub, g, l, d, m, onOpen) },
+            busy = busy, snackbar = snackbar,
+            onCreate = { t, sub, g, l, d, m -> vm.create(t, sub, g, l, d, m) { id -> closeForms(); onOpen(id) } },
         )
         return
     }
@@ -170,14 +177,14 @@ private fun AssessmentCard(a: AssessmentInfo, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CreateAssessmentForm(onBack: () -> Unit, onAi: () -> Unit, onCreate: (String, String?, String?, String?, String?, Int?) -> Unit) {
+private fun CreateAssessmentForm(busy: Boolean, snackbar: SnackbarHostState, onBack: () -> Unit, onAi: () -> Unit, onCreate: (String, String?, String?, String?, String?, Int?) -> Unit) {
     var title by rememberSaveable { mutableStateOf("") }
     var subject by rememberSaveable { mutableStateOf("") }
     var grade by rememberSaveable { mutableStateOf<String?>(null) }
     var level by rememberSaveable { mutableStateOf<String?>(null) }
     var desc by rememberSaveable { mutableStateOf("") }
     var minutes by rememberSaveable { mutableStateOf("") }
-    Scaffold(topBar = { YadbinTopBar("ساخت آزمون جدید", onBack) }) { pad ->
+    Scaffold(topBar = { YadbinTopBar("ساخت آزمون جدید", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -188,25 +195,25 @@ private fun CreateAssessmentForm(onBack: () -> Unit, onAi: () -> Unit, onCreate:
             OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
             OutlinedTextField(desc, { desc = it }, label = { Text("توضیح (اختیاری)") }, modifier = Modifier.fillMaxWidth())
             AgeField("زمان پیشنهادی به دقیقه (اختیاری)", minutes, { minutes = it }, Modifier.fillMaxWidth())
-            TextButton(onClick = onAi) { Text("ساخت پیش‌نویس با هوش مصنوعی") }
+            TextButton(onClick = onAi, enabled = !busy) { Text("ساخت پیش‌نویس با هوش مصنوعی") }
             Button(
-                enabled = title.isNotBlank(),
+                enabled = title.isNotBlank() && !busy,
                 onClick = { onCreate(title, subject.ifBlank { null }, grade, level, desc.ifBlank { null }, parseIntFa(minutes)) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("ساخت و افزودن سؤال") }
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+            ) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("ساخت و افزودن سؤال") }
+            OutlinedButton(onClick = onBack, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
         }
     }
 }
 
 @Composable
-private fun AiAssessmentForm(onBack: () -> Unit, onCreate: (String, String?, String?, String?, Int) -> Unit) {
+private fun AiAssessmentForm(busy: Boolean, snackbar: SnackbarHostState, onBack: () -> Unit, onCreate: (String, String?, String?, String?, Int) -> Unit) {
     var prompt by rememberSaveable { mutableStateOf("") }
     var subject by rememberSaveable { mutableStateOf("") }
     var grade by rememberSaveable { mutableStateOf<String?>(null) }
     var level by rememberSaveable { mutableStateOf<String?>(null) }
     var count by rememberSaveable { mutableStateOf("10") }
-    Scaffold(topBar = { YadbinTopBar("پیش‌نویس آزمون با هوش مصنوعی", onBack) }) { pad ->
+    Scaffold(topBar = { YadbinTopBar("پیش‌نویس آزمون با هوش مصنوعی", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -218,11 +225,12 @@ private fun AiAssessmentForm(onBack: () -> Unit, onCreate: (String, String?, Str
             OptionDropdown("سطح", Edu.levels, level, { level = it }, allowNone = true)
             AgeField("تعداد سؤال (۳ تا ۲۰)", count, { count = it }, Modifier.fillMaxWidth())
             Button(
-                enabled = prompt.trim().length >= 5,
+                enabled = prompt.trim().length >= 5 && !busy,
                 onClick = { onCreate(prompt, subject.ifBlank { null }, grade, level, (parseIntFa(count) ?: 10).coerceIn(3, 20)) },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("ساخت پیش‌نویس") }
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
+            ) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("ساخت پیش‌نویس") }
+            if (busy) Text("در حال ساخت پیش‌نویس… ممکن است تا یک دقیقه طول بکشد.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = onBack, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("انصراف") }
         }
     }
 }
