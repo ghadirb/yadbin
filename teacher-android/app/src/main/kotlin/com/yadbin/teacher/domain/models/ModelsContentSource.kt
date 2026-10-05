@@ -53,7 +53,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ContentSourceList(
     val sources: List<ContentSourceInfo> = emptyList(),
     val limit: Int = 30,
-    val maxFileMegabytes: Double = 5.0,
+    val maxFileMegabytes: Double = 20.0,
     val maxPages: Int = 300,
 )
 

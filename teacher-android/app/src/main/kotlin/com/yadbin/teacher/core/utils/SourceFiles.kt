@@ -7,7 +7,7 @@ import kotlin.math.min
  * these checks only save the teacher an upload that would be refused anyway.
  */
 object SourceFiles {
-    const val MAX_BYTES: Int = 5 * 1024 * 1024
+    const val MAX_BYTES: Int = 20 * 1024 * 1024
     val MIME_TYPES: Array<String> = arrayOf(
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -28,7 +28,7 @@ object SourceFiles {
         typeFor(fileName) == null ->
             "فقط فایل PDF، Word (با پسوند docx) یا متن ساده (txt) پشتیبانی می‌شود. اگر فایل Word قدیمی (doc) دارید، آن را با «ذخیره به‌عنوان» به docx تبدیل کنید."
         sizeBytes <= 0L -> "فایل خالی است."
-        sizeBytes > MAX_BYTES -> "حجم فایل بیشتر از ۵ مگابایت است. فصل‌ها را جداگانه وارد کنید یا متن را مستقیم بچسبانید."
+        sizeBytes > MAX_BYTES -> "حجم فایل بیشتر از ۲۰ مگابایت است. فصل‌ها را جداگانه وارد کنید یا متن را مستقیم بچسبانید."
         else -> null
     }
 

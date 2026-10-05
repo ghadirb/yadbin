@@ -2,7 +2,7 @@ import { extractDocxText } from './docx';
 
 /** V1 limits (documented in docs/content-sources.md). Bigger books: import chapter by chapter. */
 export const LIMITS = {
-  maxFileBytes: 5 * 1024 * 1024,
+  maxFileBytes: 20 * 1024 * 1024,
   maxPages: 300,
   maxChars: 400_000,
   maxSourcesPerTeacher: 30,
@@ -21,7 +21,7 @@ export const EXTRACT_MESSAGES_FA: Record<ExtractErrorCode, string> = {
   needs_ocr: 'این فایل احتمالاً اسکن‌شده است و متن قابل استخراج ندارد. در حال حاضر یک PDF متنی یا متن کتاب را وارد کنید.',
   unreadable: 'فایل خوانده نشد؛ ممکن است آسیب‌دیده، رمزدار یا از نوع پشتیبانی‌نشده باشد. فایل دیگری را امتحان کنید یا متن را وارد کنید.',
   empty: 'در این منبع متنی پیدا نشد.',
-  too_large: 'حجم فایل از حد مجاز (۵ مگابایت) بیشتر است. فصل‌های موردنظر را جداگانه وارد کنید.',
+  too_large: 'حجم فایل از حد مجاز (۲۰ مگابایت) بیشتر است. فصل‌های موردنظر را جداگانه وارد کنید.',
   too_many_pages: 'تعداد صفحات از حد مجاز (۳۰۰ صفحه) بیشتر است. فصل‌های موردنظر را جداگانه وارد کنید.',
   too_long: 'حجم متن از حد مجاز (۴۰۰ هزار نویسه) بیشتر است. فصل‌های موردنظر را جداگانه وارد کنید.',
 };

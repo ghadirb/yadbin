@@ -254,7 +254,7 @@ class ApiService(private val c: ApiClient) {
     suspend fun deleteContentSource(id: String) { c.request("DELETE", "/api/content-sources/$id", OkResponse.serializer()) }
     /** Sends the raw file. The server reads the text and drops the file (only the extracted text is stored). */
     suspend fun processContentSource(id: String, bytes: ByteArray): ContentSourceDetail =
-        c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), rawBody = bytes, timeoutSeconds = 90)
+        c.request("POST", "/api/content-sources/$id/process", ContentSourceDetail.serializer(), rawBody = bytes, timeoutSeconds = 180)
     suspend fun contentSourceSection(id: String, sectionId: String): ContentSectionText =
         c.request("GET", "/api/content-sources/$id/sections/$sectionId", ContentSectionText.serializer())
     /** AI makes a DRAFT from the selected part of the teacher's book only (never published). No student data is sent. */

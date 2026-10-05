@@ -121,7 +121,7 @@ fun SourcesScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onMakeQuiz: () -
 
     // The add form is a full screen inside this screen (not a floating dialog), so Cancel / Back always closes it.
     if (showAdd) {
-        val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 5.0)
+        val maxMb = ((state as? Ui.Ready<ContentSourceList>)?.data?.maxFileMegabytes ?: 20.0)
         AddSourceForm(maxMb, onBack = { showAdd = false }) { draft -> showAdd = false; vm.add(draft, onOpen) }
         busy?.let { BusyDialog(it) }
         return

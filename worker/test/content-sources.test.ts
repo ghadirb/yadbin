@@ -105,7 +105,7 @@ describe('Test 1-3: create, ownership and isolation of sources', () => {
     expect((await t.db.prepare('SELECT teacher_id FROM content_sources WHERE id = ?').bind(d.source.id).first<any>()).teacher_id).toBe(tc.id);
     const list = (await t.api('GET', '/api/content-sources', undefined, tc.token)).data;
     expect(list.sources.map((s: any) => s.id)).toEqual([d.source.id]);
-    expect(list.maxFileMegabytes).toBe(5);
+    expect(list.maxFileMegabytes).toBe(20);
   });
   it('validates input with plain Persian messages and requires login', async () => {
     const tc = await registerTeacher(t);
