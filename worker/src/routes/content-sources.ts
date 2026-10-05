@@ -82,7 +82,8 @@ async function detail(env: Env, teacherId: string, id: string, status = 200, ext
 
 // ───────────────────────── CRUD ─────────────────────────
 
-/** POST /content-sources. Pasted text (or a .txt whose text is sent along) is processed right away; PDF / Word wait for POST /:id/process with the file. */
+/** POST /content-sources. Pasted text, a .txt, or a PDF whose text the phone already extracted (pages joined by \f) is processed right away;
+ *  a PDF / Word file itself waits for POST /:id/process. */
 export async function createSource(req: Request, env: Env, teacherId: string) {
   const b = parse(createSchema, await readLargeJson(req));
   await rateLimit(env, `src-create:${teacherId}`, 30, 3600);
@@ -93,7 +94,7 @@ export async function createSource(req: Request, env: Env, teacherId: string) {
   const id = newId(), now = nowIso();
   await env.DB.prepare('INSERT INTO content_sources (id,teacher_id,title,description,subject,grade_code,file_type,original_file_name,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, teacherId, b.title, b.description || null, b.subject || null, b.gradeCode ?? null, b.fileType, b.originalFileName || null, 'pending_file', now, now).run();
-  if (hasText && (b.fileType === 'paste' || b.fileType === 'txt')) await processSource(env, teacherId, { id, file_type: b.fileType }, { text: b.text });
+  if (hasText && (b.fileType === 'paste' || b.fileType === 'txt' || b.fileType === 'pdf')) await processSource(env, teacherId, { id, file_type: b.fileType }, { text: b.text });
   return detail(env, teacherId, id, 201);
 }
 

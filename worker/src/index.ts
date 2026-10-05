@@ -10,6 +10,7 @@ import * as as_ from './routes/assessments';
 import { assessmentDraft } from './ai/assessment-draft';
 import { assessmentDraftFromSource } from './ai/assessment-from-source';
 import * as cs from './routes/content-sources';
+import { readPages } from './ai/source-vision';
 import * as reports from './routes/reports';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
@@ -100,6 +101,7 @@ add('GET', '/api/assessments/:id/report', true, (_r, env, p, t) => as_.assessmen
 add('GET', '/api/students/:id/assessments', true, (_r, env, p, t) => as_.studentAssessments(env, t, p.id));
 
 // Content Sources (کتاب‌ها و منابع درسی, v1.5) — private to the owning teacher; a foreign id looks exactly like a missing one (404).
+add('POST', '/api/content-sources/read-pages', true, (req, env, _p, t) => readPages(req, env, t));
 add('POST', '/api/content-sources', true, (req, env, _p, t) => cs.createSource(req, env, t));
 add('GET', '/api/content-sources', true, (req, env, _p, t) => cs.listSources(req, env, t));
 add('GET', '/api/content-sources/:id', true, (_r, env, p, t) => cs.getSource(env, t, p.id));

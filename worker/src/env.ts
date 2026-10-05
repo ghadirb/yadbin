@@ -29,6 +29,8 @@ export interface Env {
   AVALAI_API_KEY?: string;
   /** AvalAI model id (pin it for stable behaviour). Default in code: gpt-5.4-mini. */
   AVALAI_MODEL?: string;
+  /** Vision model that reads PDF page IMAGES (scanned / broken-font books). Default in code: gemini-flash-latest. */
+  AVALAI_VISION_MODEL?: string;
   /** Override the AvalAI base URL (default https://api.avalai.ir/v1). */
   AVALAI_BASE_URL?: string;
 }

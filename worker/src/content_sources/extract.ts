@@ -38,6 +38,18 @@ export function looksGarbled(text: string): boolean {
   return bad / visible.length > 0.08;
 }
 
+/** Persian text taken from a PDF in VISUAL order comes out letter-reversed («که» → «هک»). The most frequent short Persian words give it away:
+ *  when their mirrored forms outnumber the real ones the text is unusable and the page images must be read by the vision model instead. */
+const FA_COMMON = ['که', 'در', 'از', 'را', 'این', 'با', 'به', 'است', 'های', 'می'];
+export function looksReversedPersian(text: string): boolean {
+  const words = text.normalize('NFKC').replace(/[\u200c\u200d]/g, ' ').split(/[^\u0600-\u06FF]+/).filter(Boolean);
+  if (words.length < 40) return false;
+  const fwd = new Set(FA_COMMON), rev = new Set(FA_COMMON.map((w) => [...w].reverse().join('')));
+  let f = 0, r = 0;
+  for (const w of words) { if (fwd.has(w)) f++; else if (rev.has(w)) r++; }
+  return r >= 8 && r > f * 1.5;
+}
+
 function decodeText(bytes: Uint8Array): string {
   const utf8 = new TextDecoder('utf-8').decode(bytes);
   if ((utf8.match(/\uFFFD/g) ?? []).length / Math.max(1, utf8.length) < 0.01) return utf8;
@@ -63,6 +75,7 @@ async function pdfPages(bytes: Uint8Array): Promise<string[]> {
   return pages;
 }
 
+/** `text` for a PDF = pages already read ON THE PHONE (joined by \f); the Worker then does no PDF parsing at all. */
 export interface ExtractInput { text?: string; bytes?: Uint8Array }
 
 /** Raw text of a source. Page breaks are marked with \f so the pipeline can keep page numbers. Throws ExtractError (never crashes). */
@@ -70,6 +83,14 @@ export async function extractRawText(fileType: FileType, input: ExtractInput): P
   let text: string;
   if (fileType === 'paste' || fileType === 'txt') {
     text = input.text ?? (input.bytes ? decodeText(input.bytes) : '');
+  } else if (fileType === 'pdf' && input.text !== undefined) {
+    // Text extracted on the device (PdfBox) or read from page images by the vision model: same quality gates as a server-side PDF read.
+    text = input.text;
+    const pages = text.split('\f');
+    if (pages.length > LIMITS.maxPages) throw new ExtractError('too_many_pages');
+    const chars = text.replace(/\s/g, '').length;
+    if (!chars) throw new ExtractError('needs_ocr');
+    if (chars < LIMITS.minCharsPerPage * Math.max(1, pages.length) || looksGarbled(text) || looksReversedPersian(text)) throw new ExtractError('needs_ocr');
   } else {
     const bytes = input.bytes;
     if (!bytes || !bytes.length) throw new ExtractError('empty');
@@ -82,7 +103,7 @@ export async function extractRawText(fileType: FileType, input: ExtractInput): P
       const pages = await pdfPages(bytes);
       text = pages.join('\f');
       const chars = text.replace(/\s/g, '').length;
-      if (chars < LIMITS.minCharsPerPage * Math.max(1, pages.length) || looksGarbled(text)) throw new ExtractError('needs_ocr');
+      if (chars < LIMITS.minCharsPerPage * Math.max(1, pages.length) || looksGarbled(text) || looksReversedPersian(text)) throw new ExtractError('needs_ocr');
     }
   }
   if (!text.replace(/[\s\f]/g, '')) throw new ExtractError(fileType === 'pdf' ? 'needs_ocr' : 'empty');
