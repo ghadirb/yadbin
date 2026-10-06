@@ -76,7 +76,16 @@ class StudentGrowthViewModel(private val repo: Repository, private val id: Strin
         job = viewModelScope.launch {
             _busy.value = true
             if (_state.value !is Ui.Ready) _state.value = Ui.Loading
-            _state.value = loadUi { repo.studentGrowth(id, _query.value) }
+            _state.value = try {
+                val l = repo.studentGrowth(id, _query.value)
+                Ui.Ready(l.data, l.fromCache)
+            } catch (e: com.yadbin.teacher.core.network.ApiException) {
+                // A bare 404 «یافت نشد.» (error code not_found, no student/assessment name) means the server has no growth endpoint yet.
+                if (e.status == 404 && e.message.orEmpty().trim() == "یافت نشد.") Ui.Error("سرور هنوز به نسخهٔ جدید «روند رشد و تحلیل» به‌روز نشده است. پس از به‌روزرسانی سرور دوباره تلاش کنید.")
+                else Ui.Error(errorText(e))
+            } catch (e: com.yadbin.teacher.core.network.NetworkException) {
+                Ui.Error(errorText(e))
+            }
             _busy.value = false
         }
     }

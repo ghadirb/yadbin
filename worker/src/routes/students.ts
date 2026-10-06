@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import { effectiveGradeOrder, getOwnedClass, getOwnedStudent, studentDto } from '../db/queries';
 import { gradeByCode } from '../education/catalog';
+import { buildProfileAssessments } from '../growth/profile-assessments';
 import { buildEducationalProfile, buildRecommendations, buildStudentReport, studentHistory } from '../services/metrics';
 import { eraseAssessmentDataForStudent } from './assessments';
 import { enforceCreate } from '../subscription/gating';
@@ -104,7 +105,12 @@ export async function deleteStudent(env: Env, teacherId: string, id: string) {
 
 /** GET /students/:id/profile — v1.2 educational profile (age, grade, skill indicators, summary). */
 export async function getEducationalProfile(env: Env, teacherId: string, id: string) {
-  return json(await buildEducationalProfile(env.DB, await getOwnedStudent(env.DB, teacherId, id)));
+  const student = await getOwnedStudent(env.DB, teacherId, id);
+  const profile = await buildEducationalProfile(env.DB, student);
+  // Teacher assessments (manual + from sources) are part of the analysis under the student's name; they never change the cognitive indicators.
+  const assessments = await buildProfileAssessments(env.DB, teacherId, id);
+  const summary = { ...profile.summary, text: `${profile.summary.text} ${assessments.text}`.trim(), assessmentsBasedOn: assessments.count };
+  return json({ ...profile, summary, assessments });
 }
 /** GET /students/:id/recommendations — suggestions only; creates nothing. */
 export async function getRecommendations(env: Env, teacherId: string, id: string) {

@@ -258,6 +258,13 @@ private fun ProfileCard(p: EducationalProfile) {
                     Text(p.summary.text, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                 }
             }
+            if (p.assessments.count > 0) {
+                Text("آزمون‌های معلم", style = MaterialTheme.typography.titleSmall)
+                Metric("تعداد آزمون‌های انجام‌شده", p.assessments.count.fa())
+                p.assessments.average?.let { Metric("میانگین نمره", "${it.toInt().fa()}٪") }
+                p.assessments.last?.let { Metric("نمرهٔ آخرین آزمون", "${it.toInt().fa()}٪") }
+                p.assessments.subjects.forEach { s -> Text("${s.subject}: ${s.count.fa()} آزمون • میانگین ${s.average.toInt().fa()}٪", style = MaterialTheme.typography.bodySmall) }
+            }
             NoticeText(p.notice)
         }
     }

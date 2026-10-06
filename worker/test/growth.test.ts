@@ -383,3 +383,19 @@ describe('suggestion & regression', () => {
     expect((await t.api('GET', `/api/v1/students/${s.studentId}/growth`, undefined, s.token)).status).toBe(200);   // /api/v1 alias
   });
 });
+
+describe('Student profile under the name includes Teacher Assessments', () => {
+  it('summary text and `assessments` cover manual/source exams; cognitive indicators are unchanged', async () => {
+    const s = await setup('دانش‌آموز پروفایل');
+    for (const d of [5, 3]) await seedResult(s, { at: ago(d), accuracy: 0.6 });
+    const before = (await t.api('GET', `/api/students/${s.studentId}/profile`, undefined, s.token)).data;
+    expect(before.assessments).toMatchObject({ count: 0, average: null });
+    expect(before.summary.text).toContain('آزمون معلمِ انجام‌شده‌ای');
+    for (const [d, p] of [[6, 50], [4, 70], [2, 90]] as const) await seedAssessment(s, { at: ago(d), percent: p, subject: 'ریاضی' });
+    const after = (await t.api('GET', `/api/students/${s.studentId}/profile`, undefined, s.token)).data;
+    expect(after.assessments).toMatchObject({ count: 3, average: 70, last: 90 });
+    expect(after.assessments.subjects[0]).toMatchObject({ subject: 'ریاضی', count: 3 });
+    expect(after.summary.text).toContain('۳ آزمون معلم');
+    expect(after.skills).toEqual(before.skills); // exam scores never move the cognitive indicators
+  });
+});

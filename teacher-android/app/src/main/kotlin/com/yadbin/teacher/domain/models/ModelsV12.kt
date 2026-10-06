@@ -30,7 +30,13 @@ import kotlinx.serialization.Serializable
     val sufficientData: Boolean = false,
     val sessionCount: Int = 0,
 )
-@Serializable data class ProfileSummary(val text: String = "", val basedOn: Int = 0)
+@Serializable data class ProfileSummary(val text: String = "", val basedOn: Int = 0, val assessmentsBasedOn: Int = 0)
+/** Teacher assessments (manual + from sources) summarised under the student's name; separate from the cognitive indicators. */
+@Serializable data class ProfileAssessmentSubject(val subject: String = "", val count: Int = 0, val average: Double = 0.0, val last: Double = 0.0, val trend: String = "")
+@Serializable data class ProfileAssessments(
+    val count: Int = 0, val average: Double? = null, val last: Double? = null, val lastAt: String? = null,
+    val subjects: List<ProfileAssessmentSubject> = emptyList(), val text: String = "",
+)
 /** Performance INDICATORS of activities - never a medical or psychological diagnosis. */
 @Serializable data class EducationalProfile(
     val student: EduStudent = EduStudent(),
@@ -38,6 +44,7 @@ import kotlinx.serialization.Serializable
     val lastActivityAt: String? = null,
     val skills: List<SkillIndicator> = emptyList(),
     val summary: ProfileSummary = ProfileSummary(),
+    val assessments: ProfileAssessments = ProfileAssessments(),
     val notice: String = "",
 )
 
