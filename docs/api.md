@@ -21,6 +21,8 @@
 | GET `/api/reports/student/:id` | گزارش (وضعیت، روند، پیشنهاد سیستم) |
 | GET `/api/students/:id/growth` | «روند رشد و تحلیل» دانش‌آموز نسبت به گذشتهٔ خودش. پرسش‌ها: `range=7d\|30d\|3m\|6m\|all` (پیش‌فرض `30d`)، `game`، `skill`، `level`، `subject`. پاسخ: `overview`, `cognitive{timeline,skills,activities}`, `assessments`, `analysis`, `suggestion`. جزئیات: [student-growth.md](student-growth.md) |
 | POST `/api/students/:id/growth/summary` | بدنهٔ اختیاریِ همان فیلترها. متن تحلیل را (در صورت امکان) با AI روان‌تر می‌کند؛ هر خطا یا متن مشکوک → متن قاعده‌محور (`source: 'rules'`) |
+| GET `/api/students/:id/report` | «گزارش جامع پرونده دانش‌آموز» (JSON ساخت‌یافته). پرسش‌ها: `period=7d\|30d\|3m\|6m\|year_current\|year_previous\|year\|custom` (پیش‌فرض `year_current`)، `year` (سال شمسیِ شروع تحصیلی، با `period=year`)، `from` و `to` (`YYYY-MM-DD`، با `custom`)، `type=full\|summary`، `page`، `pageSize` (≤۵۰). پاسخ: `student`, `period`, `overview`, `cognitiveGrowth`, `skillTrends{skills,responseControl,learning}`, `academicAssessments`, `activities{total,page,pages,items}`, `analysis`, `periodOptions`, `metadata`. جزئیات: [student-reports.md](student-reports.md) |
+| GET `/api/students/:id/report/print` | همان گزارش به‌صورت HTML آمادهٔ چاپ A4 (فارسی، RTL، نمودار SVG داخلی). همان پرسش‌ها؛ هدرها: `X-Report-Filename`، CSP بسته، `no-store`. اپ آن را با چاپ/ذخیرهٔ PDF سیستم‌عامل خروجی می‌دهد |
 | GET `/api/reports/class/:id` | آمار کلی (بدون رتبه‌بندی) |
 | GET `/api/health` | سلامت |
 

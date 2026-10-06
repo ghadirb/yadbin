@@ -13,6 +13,7 @@ import * as cs from './routes/content-sources';
 import { readPages, visionQuota } from './ai/source-vision';
 import * as reports from './routes/reports';
 import * as growth from './routes/growth';
+import * as studentReport from './routes/student-report';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
@@ -47,6 +48,9 @@ add('PUT', '/api/students/:id', true, (req, env, p, t) => students.updateStudent
 add('GET', '/api/students/:id/profile', true, (_r, env, p, t) => students.getEducationalProfile(env, t, p.id));
 // Student growth («روند رشد و تحلیل»): the student compared with their own past only. Teacher + student ownership; private (never in a play link).
 add('GET', '/api/students/:id/growth', true, (req, env, p, t) => growth.getGrowth(req, env, t, p.id));
+// Comprehensive student report (academic year / custom range, full | summary) + print-ready A4 HTML. Teacher + student ownership; private.
+add('GET', '/api/students/:id/report', true, (req, env, p, t) => studentReport.getStudentReport(req, env, t, p.id));
+add('GET', '/api/students/:id/report/print', true, (req, env, p, t) => studentReport.getStudentReportPrint(req, env, t, p.id));
 add('POST', '/api/students/:id/growth/summary', true, (req, env, p, t) => growth.postGrowthSummary(req, env, t, p.id));
 add('GET', '/api/students/:id/recommendations', true, (_r, env, p, t) => students.getRecommendations(env, t, p.id));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));

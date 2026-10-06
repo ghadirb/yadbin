@@ -30,7 +30,7 @@ interface CogRow {
  *  - results with a real accuracy in 0..1 and at least one answered item (incomplete results are skipped).
  * Teacher preview sessions live in their own table (teacher_preview_sessions) and never reach game_results.
  */
-export async function loadCognitiveResults(db: D1Database, teacherId: string, studentId: string, sinceIso: string | null): Promise<CogResult[]> {
+export async function loadCognitiveResults(db: D1Database, teacherId: string, studentId: string, sinceIso: string | null, untilIso: string | null = null): Promise<CogResult[]> {
   const { results } = await db.prepare(
     `SELECT r.created_at, r.accuracy, r.sample_count, r.average_response_time, r.difficulty_reached, gs.game_type,
             a.id AS activity_id, a.title, a.activity_level
@@ -41,9 +41,9 @@ export async function loadCognitiveResults(db: D1Database, teacherId: string, st
       WHERE ast.student_id = ?1 AND a.teacher_id = ?2 AND a.publish_state = 'published'
         AND ast.status = 'completed' AND gs.status = 'completed'
         AND r.accuracy IS NOT NULL AND r.accuracy >= 0 AND r.accuracy <= 1 AND r.sample_count > 0
-        AND (?3 IS NULL OR r.created_at >= ?3)
+        AND (?3 IS NULL OR r.created_at >= ?3) AND (?4 IS NULL OR r.created_at < ?4)
       ORDER BY r.created_at ASC LIMIT 5000`,
-  ).bind(studentId, teacherId, sinceIso).all<CogRow>();
+  ).bind(studentId, teacherId, sinceIso, untilIso).all<CogRow>();
   return results.map((r) => ({
     at: r.created_at, accuracy: r.accuracy, samples: r.sample_count, avgResponseMs: r.average_response_time, difficulty: r.difficulty_reached,
     game: r.game_type, activityId: r.activity_id, title: r.title || GAME_TITLE[r.game_type] || r.game_type, level: r.activity_level,
@@ -52,7 +52,7 @@ export async function loadCognitiveResults(db: D1Database, teacherId: string, st
 const GAME_TITLE: Record<string, string> = { memory: 'به خاطر بسپار', attention: 'پیداش کن', problem_solving: 'راهش را پیدا کن' };
 
 /** Completed, scored attempts of teacher assessments (own tables; never mixed with the cognitive profile). Drafts / previews are not assigned to students. */
-export async function loadAssessmentResults(db: D1Database, teacherId: string, studentId: string, sinceIso: string | null): Promise<AssessmentResult[]> {
+export async function loadAssessmentResults(db: D1Database, teacherId: string, studentId: string, sinceIso: string | null, untilIso: string | null = null): Promise<AssessmentResult[]> {
   const { results } = await db.prepare(
     `SELECT a.id AS assessment_id, a.title, a.subject, r.percent, r.total, COALESCE(x.completed_at, r.created_at) AS at
        FROM assessment_students x
@@ -60,9 +60,9 @@ export async function loadAssessmentResults(db: D1Database, teacherId: string, s
        JOIN assessment_attempts t ON t.assessment_student_id = x.id AND t.status = 'completed'
        JOIN assessment_results r ON r.attempt_id = t.id
       WHERE x.student_id = ?1 AND a.teacher_id = ?2 AND x.status = 'completed' AND a.status IN ('published','archived') AND r.total > 0
-        AND (?3 IS NULL OR COALESCE(x.completed_at, r.created_at) >= ?3)
+        AND (?3 IS NULL OR COALESCE(x.completed_at, r.created_at) >= ?3) AND (?4 IS NULL OR COALESCE(x.completed_at, r.created_at) < ?4)
       ORDER BY at ASC LIMIT 2000`,
-  ).bind(studentId, teacherId, sinceIso).all<{ assessment_id: string; title: string; subject: string | null; percent: number; total: number; at: string }>();
+  ).bind(studentId, teacherId, sinceIso, untilIso).all<{ assessment_id: string; title: string; subject: string | null; percent: number; total: number; at: string }>();
   return results.map((r) => ({ assessmentId: r.assessment_id, title: r.title, subject: r.subject, at: r.at, percent: r.percent, total: r.total }));
 }
 
