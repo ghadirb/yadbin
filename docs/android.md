@@ -3,10 +3,10 @@
 ## ساختار
 ```
 app/src/main/kotlin/com/yadbin/teacher/
-├── core/{network,auth,database,utils}    ApiClient (OkHttp)، TokenStore (رمزنگاری‌شده)، Room، اعتبارسنجی/قالب‌بندی/QR
+├── core/{network,auth,database,utils,avatar,billing,pdf,diagnostics}   ApiClient (OkHttp)، TokenStore (رمزنگاری‌شده)، Room، اعتبارسنجی/قالب‌بندی/QR، تصاویر محلی، خرید مایکت، PDF، گزارش خطای محلی (CrashLog)
 ├── data/{remote,local,repository}        ApiService (یک تابع برای هر endpoint)، CacheStore، Repository (شبکه‌ی اول، کش هنگام آفلاین)
 ├── domain/{models,usecases}              مدل‌های JSON مطابق Worker، CreateActivityUseCase
-└── ui/{auth,dashboard,classes,activities,reports}   صفحه‌ها + ViewModel
+└── ui/{auth,dashboard,classes,activities,reports,growth,assessments,sources,subscription,account}   صفحه‌ها + ViewModel
 ```
 
 ## رفتارهای مهم
