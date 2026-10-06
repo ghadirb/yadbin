@@ -49,6 +49,7 @@ class ApiClient(
         ignoreUnknownKeys = true
         encodeDefaults = true
         explicitNulls = false
+        coerceInputValues = true // a server `null` for a non-null field with a default falls back to the default instead of failing the whole screen
     }
     private val base = baseUrl.trimEnd('/')
     private val jsonType = "application/json; charset=utf-8".toMediaType()
