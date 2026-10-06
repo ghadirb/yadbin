@@ -46,6 +46,13 @@ class Repository(
         cache.clear()
     }
 
+    /** Permanently deletes the account and all its data on the server, then wipes the local session and cache. 404 = already deleted -> still clean up locally. */
+    suspend fun deleteAccount(password: String) {
+        try { api.deleteAccount(password) } catch (e: com.yadbin.teacher.core.network.ApiException) { if (e.status != 404) throw e }
+        tokens.clear()
+        cache.clear()
+    }
+
     // ---- reads (network first, cached copy when offline) ------------------------------------
     suspend fun classes(): Loaded<ClassesResponse> = cached("classes", ClassesResponse.serializer()) { api.classes() }
     suspend fun archivedClasses(): Loaded<ClassesResponse> = cached("classes:archived", ClassesResponse.serializer()) { api.archivedClasses() }

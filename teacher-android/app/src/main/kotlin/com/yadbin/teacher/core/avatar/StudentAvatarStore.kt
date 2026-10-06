@@ -49,6 +49,13 @@ class StudentAvatarStore(context: Context) {
         bump()
     }
 
+    /** Account deletion: every local student picture and preset choice goes away. */
+    fun deleteEverything() {
+        dir.listFiles()?.forEach { it.delete() }
+        prefs.edit().clear().apply()
+        bump()
+    }
+
     suspend fun savePhotoFromUri(id: String, uri: Uri): Boolean = withContext(Dispatchers.IO) {
         val target = file(id) ?: return@withContext false
         try {

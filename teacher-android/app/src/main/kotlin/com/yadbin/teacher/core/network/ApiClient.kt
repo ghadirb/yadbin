@@ -29,7 +29,7 @@ class ApiException(val code: String, message: String, val status: Int, val sugge
 class NetworkException(message: String = "اتصال اینترنت برقرار نیست.") : Exception(message)
 
 @Serializable
-private data class ErrorBody(val error: String? = null, val message: String? = null, val details: JsonElement? = null)
+private data class ErrorBody(val error: String? = null, val message: String? = null, val details: JsonElement? = null, val errorId: String? = null)
 
 /** Thin HTTP layer: JSON in/out, Bearer auth, error mapping. No Android dependencies (unit-testable). */
 @OptIn(ExperimentalSerializationApi::class)
@@ -141,7 +141,9 @@ class ApiClient(
 
     private fun toApiException(status: Int, text: String): ApiException {
         val parsed = try { json.decodeFromString(ErrorBody.serializer(), text) } catch (e: Exception) { null }
-        val message = parsed?.message?.takeIf { it.isNotBlank() } ?: "دریافت اطلاعات با مشکل مواجه شد. لطفاً دوباره تلاش کنید."
+        val base = parsed?.message?.takeIf { it.isNotBlank() } ?: "دریافت اطلاعات با مشکل مواجه شد. لطفاً دوباره تلاش کنید."
+        // A server fault carries a short id (also in the Worker log): showing it lets support find the exact error.
+        val message = if (status >= 500 && !parsed?.errorId.isNullOrBlank()) "$base (کد پیگیری: ${parsed?.errorId})" else base
         val suggested = ((parsed?.details as? JsonObject)?.get("suggested") as? JsonPrimitive)?.intOrNull
         return ApiException(parsed?.error ?: "http_$status", message, status, suggested)
     }

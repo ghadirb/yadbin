@@ -16,7 +16,7 @@ android {
         targetSdk = 35
         // Myket/Play need a strictly increasing versionCode: CI passes VERSION_CODE (= workflow run number).
         versionCode = ((System.getenv("VERSION_CODE") ?: "").ifBlank { (project.findProperty("VERSION_CODE") as String?) ?: "1" }).toInt()
-        versionName = "0.1.0"
+        versionName = (System.getenv("VERSION_NAME") ?: "").ifBlank { (project.findProperty("VERSION_NAME") as String?) ?: "1.0.0" }
 
         // Never hard-coded: pass -PAPI_BASE_URL=... or env API_BASE_URL. Default = local `wrangler dev` seen from the emulator.
         val apiBase = (System.getenv("API_BASE_URL") ?: "").ifBlank {
@@ -54,7 +54,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 is OFF by default (never shipped untested). Turn on with -PMINIFY=true or env MINIFY=true and test purchase + PDF + login on a device first (docs/release.md).
+            val minify = ((System.getenv("MINIFY") ?: "").ifBlank { (project.findProperty("MINIFY") as String?) ?: "false" }) == "true"
+            isMinifyEnabled = minify
+            isShrinkResources = minify
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (ksPath.isNotBlank()) signingConfig = signingConfigs.getByName("release")
         }
     }

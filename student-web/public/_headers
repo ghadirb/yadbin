@@ -9,3 +9,13 @@
 
 /sw.js
   Cache-Control: no-cache
+
+# Public legal / support pages (linked from the app and the Myket listing): static, no scripts, indexable.
+/privacy*
+  ! X-Robots-Tag
+/terms*
+  ! X-Robots-Tag
+/support*
+  ! X-Robots-Tag
+/legal.css
+  ! X-Robots-Tag

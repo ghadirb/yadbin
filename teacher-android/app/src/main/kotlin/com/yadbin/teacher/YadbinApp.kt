@@ -53,6 +53,7 @@ class YadbinApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.yadbin.teacher.core.diagnostics.CrashLog.install(this, "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}")
         container = AppContainer(this)
     }
 }

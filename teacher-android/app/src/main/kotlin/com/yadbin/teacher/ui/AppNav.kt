@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
 import com.yadbin.teacher.ui.activities.ActivityScreen
+import com.yadbin.teacher.ui.account.AccountScreen
 import com.yadbin.teacher.ui.activities.AiBuilderScreen
 import com.yadbin.teacher.ui.activities.CreateActivityScreen
 import com.yadbin.teacher.ui.dashboard.OverviewScreen
@@ -55,6 +56,7 @@ object Routes {
     const val ASSESSMENT = "assessment/{id}"
     const val SUBSCRIPTION = "subscription"
     const val UPGRADE = "upgrade"
+    const val ACCOUNT = "account"
     const val SOURCES = "sources"
     const val SOURCE = "source/{id}"
     const val SOURCE_QUIZ = "sourceQuiz/{id}?replace={replace}"
@@ -118,6 +120,7 @@ fun AppNav() {
                 onAssessments = { nav.navigate(Routes.ASSESSMENTS) },
                 onSources = { nav.navigate(Routes.SOURCES) },
                 onSubscription = { nav.navigate(Routes.SUBSCRIPTION) },
+                onAccount = { nav.navigate(Routes.ACCOUNT) },
                 onLoggedOut = { nav.toLoginClearingStack() },
             )
         }
@@ -184,6 +187,9 @@ fun AppNav() {
         }
         composable(Routes.SUBSCRIPTION) {
             SubscriptionScreen(onBack = { nav.popBackStack() }, onUpgrade = { nav.navigate(Routes.UPGRADE) })
+        }
+        composable(Routes.ACCOUNT) {
+            AccountScreen(onBack = { nav.popBackStack() }, onAccountDeleted = { nav.toLoginClearingStack() })
         }
         composable(Routes.UPGRADE) {
             UpgradeScreen(onBack = { nav.popBackStack() })

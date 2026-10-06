@@ -24,6 +24,12 @@ class ApiService(private val c: ApiClient) {
 
     suspend fun classes(): ClassesResponse = c.request("GET", "/api/classes", ClassesResponse.serializer())
 
+    /** Permanently deletes this teacher and ALL their data on the server. Needs the current password; a wrong one is 403 `wrong_password` (not 401, so the app does not log out). */
+    suspend fun deleteAccount(password: String) {
+        val body = buildJsonObject { put("password", password); put("confirm", true) }.toString()
+        c.request("POST", "/api/account/delete", OkResponse.serializer(), body)
+    }
+
     suspend fun createClass(name: String, grade: String, school: String?, gradeCode: String? = null, ageMin: Int? = null, ageMax: Int? = null): ClassEnvelope =
         c.request("POST", "/api/classes", ClassEnvelope.serializer(), j.encodeToString(ClassRequest.serializer(), ClassRequest(name, grade, school?.ifBlank { null }, gradeCode, ageMin, ageMax)))
 

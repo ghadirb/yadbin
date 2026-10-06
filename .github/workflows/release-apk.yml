@@ -2,7 +2,8 @@ name: Release APK (signed, for Myket)
 
 # Builds the SIGNED release APK of the teacher app with the fixed key stored in repository secrets:
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
-# Optional repo variables: API_BASE_URL (backend), MYKET_PUBLIC_KEY (in-app purchase; empty = billing disabled).
+# Optional repo variables: API_BASE_URL (backend), MYKET_PUBLIC_KEY (in-app purchase; empty = billing disabled),
+# VERSION_NAME (shown in the app; default 1.0.0), MINIFY (true = R8; keep off until tested on a device, docs/release.md).
 # Run: Actions → "Release APK" → Run workflow. Output: workflow artifact + a GitHub Release with a fixed download link.
 on:
   workflow_dispatch:
@@ -41,6 +42,8 @@ jobs:
           API_BASE_URL: ${{ vars.API_BASE_URL }}
           MYKET_PUBLIC_KEY: ${{ vars.MYKET_PUBLIC_KEY }}
           VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ vars.VERSION_NAME }}   # optional; empty = 1.0.0
+          MINIFY: ${{ vars.MINIFY }}               # optional; empty/false = R8 off (see docs/release.md)
           YADBIN_KEYSTORE_PATH: ${{ runner.temp }}/yadbin-release.jks
           YADBIN_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           YADBIN_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}

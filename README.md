@@ -23,14 +23,16 @@ Student Web/PWA (بدون ورود) ─────HTTPS──► Cloudflare Wor
 
 | بخش | وضعیت |
 |---|---|
-| Worker + D1 (auth، کلاس، دانش‌آموز، فعالیت، توکن، play، گزارش) | ✅ ۴۴ تست خودکار روی workerd + D1 واقعی |
+| Worker + D1 (auth، کلاس، دانش‌آموز، فعالیت، آزمون‌های معلم، منابع کتاب، رشد و گزارش، اشتراک، حذف حساب) | ✅ تست خودکار روی workerd + D1 واقعی (`npm test`؛ تعداد دقیق را خروجی تست نشان می‌دهد) |
 | Scoring / Trend / Recommendation / Adaptive | ✅ تست واحد |
 | Student Web (سه بازی، Resume، Offline، Sync) | ✅ ۲۴ تست + **۷ تست در Chromium واقعی** (`e2e/`، اجرا در CI) |
 | سناریوی پذیرش بند ۴۴ | ✅ سمت سرور (Node) و سمت مرورگر (Playwright)؛ شامل قطع اینترنت وسط بازی و ارسال تکراری |
-| Teacher Android (Compose) | ✅ کامپایل و ۴ فایل تست واحد در CI سبز؛ APK دیباگ ساخته می‌شود. ⚠️ **روی دستگاه/شبیه‌ساز اجرا و تست رابط کاربری نشده** (نیازمند امتحان دستی شما) |
+| Teacher Android (Compose) | ✅ تست‌های واحد JVM (قرارداد API، Repository/آفلاین، رشد، حذف حساب، گزارش خطا و …) و APK دیباگ در CI. صفحهٔ «حساب، پشتیبانی و حریم خصوصی» (لینک‌های پشتیبانی/حریم/شرایط، حذف حساب با رمز، کد بازیابی، گزارش خطای محلی) پیاده‌سازی شده. ⚠️ **روی دستگاه/شبیه‌ساز اجرا و تست رابط کاربری نشده** (نیازمند امتحان دستی شما) |
 | امنیت (rate limit، header، CORS، قفل ورود، fail-closed secret) | ✅ تست خودکار |
-| دیپلوی Cloudflare | ✅ workflow دستی `deploy.yml` (Worker + Student Web از یک آدرس workers.dev) |
-| AI / Leaderboard / رتبه‌بندی | ⛔ عمداً ساخته نشده (طبق سند) |
+| حذف حساب و صفحه‌های `/privacy` `/terms` `/support` | ✅ Worker + تست؛ ⚠️ متن حقوقی پیش‌نویس است و باید مشاور حقوقی ببیندش |
+| دیپلوی Cloudflare | ✅ workflow دستی `deploy.yml` (Worker + Student Web از یک آدرس workers.dev)؛ APK امضاشده: `release-apk.yml` (`docs/release.md`) |
+| AI | ✅ فقط کمکی و قابل‌کنترل (پیش‌نویس فعالیت/آزمون، خلاصهٔ رشد با fallback قاعده‌محور، سهمیه)؛ هیچ تشخیص یا برچسب هوش/اختلال نمی‌دهد |
+| Leaderboard / رتبه‌بندی دانش‌آموزان | ⛔ عمداً ساخته نشده (طبق سند) |
 
 ## اجرای Worker به‌صورت local
 
@@ -40,7 +42,7 @@ npm install
 cp .dev.vars.example .dev.vars        # JWT_SECRET را عوض کنید
 npm run db:migrate:local
 npm run dev                           # http://localhost:8787
-npm test                              # 44 تست
+npm test                              # همهٔ تست‌های Worker
 ```
 
 ## متغیرهای محیطی (Worker)

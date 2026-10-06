@@ -1,11 +1,13 @@
 // App-shell cache so a child can re-open the game offline / on a slow network. API calls are never cached.
-const CACHE = 'yadbin-shell-v3';
+const CACHE = 'yadbin-shell-v4';
 const wait = (ms) => new Promise((res) => setTimeout(() => res(null), ms));
+// Static legal/support pages are plain network pages: they must never replace the cached game shell ('/') nor be served from it.
+const LEGAL = /^\/(privacy|terms|support)(\.html)?\/?$|^\/legal\.css$/;
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/favicon.ico'])).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/') || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/') || url.origin !== location.origin || LEGAL.test(url.pathname)) return;
   if (e.request.mode === 'navigate') {
     // Network first, but on a slow/hanging network fall back to the cached shell after 3 s (the page is the same for every /play/{token}).
     e.respondWith((async () => {

@@ -18,6 +18,7 @@ import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
 import * as sub from './routes/subscription';
+import * as account from './routes/account';
 import { corsHeaders, HttpError, json } from './utils/http';
 
 type P = Record<string, string>;
@@ -31,6 +32,8 @@ function add(method: string, path: string, teacher: boolean, handler: Route['han
 add('POST', '/api/auth/register', false, (req, env) => auth.register(req, env));
 add('POST', '/api/auth/login', false, (req, env) => auth.login(req, env));
 add('POST', '/api/auth/reset-password', false, (req, env) => auth.resetPassword(req, env));
+// Self-service account deletion (Myket / privacy requirement): password-confirmed, erases the teacher and all their data.
+add('POST', '/api/account/delete', true, (req, env, _p, t) => account.deleteAccount(req, env, t));
 
 add('GET', '/api/classes', true, (req, env, _p, t) => classes.listClasses(env, t, req));
 add('POST', '/api/classes', true, (req, env, _p, t) => classes.createClass(req, env, t));
