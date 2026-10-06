@@ -20,6 +20,27 @@ class JalaliTest {
         assertEquals(Triple(1405, 7, 1), j(2026, 9, 23))
     }
 
+    @Test fun jalali_to_gregorian_matches_known_dates_and_rejects_impossible_ones() {
+        assertEquals("2026-09-23", Jalali.toGregorian(1405, 7, 1)!!.iso())   // 1 Mehr 1405 = start of the academic year
+        assertEquals("2026-03-21", Jalali.toGregorian(1405, 1, 1)!!.iso())
+        assertEquals("2025-03-20", Jalali.toGregorian(1403, 12, 30)!!.iso()) // 1403 is a leap year
+        assertEquals("2026-03-20", Jalali.toGregorian(1404, 12, 29)!!.iso())
+        assertEquals("2027-09-22", Jalali.toGregorian(1406, 6, 31)!!.iso())  // last day of the 1405–1406 academic year
+        assertEquals("2029-03-20", Jalali.toGregorian(1408, 1, 1)!!.iso())
+        assertNull(Jalali.toGregorian(1404, 12, 30))  // 1404 is not a leap year
+        assertNull(Jalali.toGregorian(1405, 7, 31))   // Mehr has 30 days
+        assertNull(Jalali.toGregorian(1405, 13, 1))
+        assertNull(Jalali.toGregorian(1405, 1, 0))
+    }
+
+    @Test fun jalali_to_gregorian_round_trips_every_day_of_two_years() {
+        for (jy in 1405..1406) for (jm in 1..12) for (jd in 1..(if (jm <= 6) 31 else 30)) {
+            val g = Jalali.toGregorian(jy, jm, jd) ?: continue // 30 Esfand of a common year does not exist
+            val back = Jalali.fromGregorian(g.year, g.month, g.day)
+            assertEquals(Triple(jy, jm, jd), Triple(back.year, back.month, back.day))
+        }
+    }
+
     @Test fun iso_utc_is_shown_in_tehran_time_and_in_persian_digits() {
         assertEquals("۱۰ شهریور ۱۴۰۵", "2026-09-01T10:00:00.000Z".jalaliFa())
         assertEquals("۱۴۰۵/۰۶/۱۰", "2026-09-01T10:00:00.000Z".jalaliNumericFa())

@@ -28,6 +28,27 @@ object Jalali {
         return Date(jy, jm, jd)
     }
 
+    data class GregorianDate(val year: Int, val month: Int, val day: Int) {
+        /** «2026-09-23» — the form the report API expects for a custom range. */
+        fun iso(): String = "%04d-%02d-%02d".format(year, month, day)
+    }
+
+    /**
+     * Jalali y/m/d -> Gregorian, or null when that Jalali date does not exist (e.g. 30 Esfand of a common year, 31 Mehr).
+     * Built on [fromGregorian] (already covered by tests): estimate the day from 1 Farvardin ≈ 21 March, then confirm by converting back.
+     */
+    fun toGregorian(jy: Int, jm: Int, jd: Int): GregorianDate? {
+        if (jy !in 1300..1600 || jm !in 1..12 || jd !in 1..31) return null
+        val offset = if (jm <= 6) (jm - 1) * 31 + (jd - 1) else 186 + (jm - 7) * 30 + (jd - 1)
+        val guess = daysFromCivil(jy + 621, 3, 21) + offset
+        for (delta in -3L..3L) {
+            val (y, m, d) = civilFromDays(guess + delta)
+            val back = fromGregorian(y, m, d)
+            if (back.year == jy && back.month == jm && back.day == jd) return GregorianDate(y, m, d)
+        }
+        return null
+    }
+
     // days since 1970-01-01 <-> civil date (H. Hinnant's algorithms)
     private fun daysFromCivil(y0: Int, m: Int, d: Int): Long {
         val y = (if (m <= 2) y0 - 1 else y0).toLong()

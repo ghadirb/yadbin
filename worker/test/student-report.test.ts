@@ -218,7 +218,7 @@ describe('summary vs full, pagination and volume', () => {
     expect(r.overview.activityCount).toBe(600); expect(r.activities.items).toHaveLength(20); expect(r.activities.total).toBe(600);
     expect(r.cognitiveGrowth.timeline.points.length).toBeLessThan(60);
     expect(body.length).toBeLessThan(120_000); // raw results are not shipped
-  });
+  }, 60_000); // seeding 600 rows in D1 can exceed vitest's 5 s default on slow runners
 });
 
 describe('GET /students/:id/report/print', () => {

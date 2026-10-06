@@ -101,6 +101,33 @@ class ApiClient(
         }
 
     /**
+     * GET that returns the raw text body (the print-ready report HTML) and the named response header. Same auth, error mapping and one quiet
+     * retry as [request]; used only for `/students/:id/report/print`.
+     */
+    suspend fun requestText(path: String, accept: String = "text/html", header: String? = null): Pair<String, String?> =
+        withContext(Dispatchers.IO) {
+            val builder = Request.Builder().url(base + path).header("Accept", accept)
+            val token = tokenProvider()
+            if (token != null) builder.header("Authorization", "Bearer $token")
+            var lastError: IOException? = null
+            for (attempt in 1..2) {
+                try {
+                    return@withContext http.newCall(builder.build()).execute().use { resp ->
+                        val text = resp.body?.string().orEmpty()
+                        if (!resp.isSuccessful) {
+                            if (resp.code == 401 && token != null) onUnauthorized()
+                            throw toApiException(resp.code, text)
+                        }
+                        text to (header?.let { resp.header(it) })
+                    }
+                } catch (e: IOException) {
+                    if (attempt < 2) kotlinx.coroutines.delay(600) else lastError = e
+                }
+            }
+            throw networkError(lastError)
+        }
+
+    /**
      * Every IOException used to read «اتصال اینترنت برقرار نیست», even when the phone WAS online and only the server was slow or briefly unreachable.
      * Same exception type (the offline cache fallback relies on it), honest text.
      */

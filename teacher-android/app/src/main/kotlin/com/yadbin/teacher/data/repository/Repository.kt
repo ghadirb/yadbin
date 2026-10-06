@@ -83,6 +83,9 @@ class Repository(
     suspend fun recommendations(id: String): Loaded<RecommendationsResponse> = cached("recs:$id", RecommendationsResponse.serializer()) { api.recommendations(id) }
     suspend fun studentGrowth(id: String, q: GrowthQuery): Loaded<StudentGrowth> = cached("growth:$id:${q.queryString()}", StudentGrowth.serializer()) { api.studentGrowth(id, q) }
     suspend fun growthSummary(id: String, q: GrowthQuery): GrowthSummary = api.growthSummary(id, q)
+    // comprehensive report: always live (a printed report must not come from a stale cache)
+    suspend fun fullReportMeta(id: String): ReportMeta = api.fullReportMeta(id)
+    suspend fun fullReportHtml(id: String, q: ReportQuery): ReportHtml = api.fullReportHtml(id, q)
     suspend fun templates(): Loaded<TemplatesResponse> = cached("templates", TemplatesResponse.serializer()) { api.templates() }
     suspend fun dashboard(query: String = ""): Loaded<DashboardResponse> = cached("dashboard:$query", DashboardResponse.serializer()) { api.dashboard(query) }
     suspend fun updateStudent(id: String, name: String, age: Int?, gradeCode: String?, gender: String?, note: String?): EduStudent =

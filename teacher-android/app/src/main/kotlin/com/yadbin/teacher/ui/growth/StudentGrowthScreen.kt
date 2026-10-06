@@ -100,7 +100,7 @@ private val TABS = listOf("نمای کلی", "روند عملکرد", "مهار�
 private const val TAB_ASSESSMENTS = 4
 
 @Composable
-fun StudentGrowthScreen(studentId: String, studentName: String? = null, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}) {
+fun StudentGrowthScreen(studentId: String, studentName: String? = null, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onOpenReport: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: StudentGrowthViewModel = viewModel(key = "growth-$studentId", factory = VmFactory { StudentGrowthViewModel(c.repository, studentId) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -118,6 +118,7 @@ fun StudentGrowthScreen(studentId: String, studentName: String? = null, classId:
                     if (s.offline) OfflineBanner()
                     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     FilterBar(s.data, query, tab, vm::setQuery)
+                    TextButton(onClick = onOpenReport, modifier = Modifier.padding(horizontal = 8.dp)) { Text("گزارش جامع سال تحصیلی / چاپ و PDF") }
                     ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
                         TABS.forEachIndexed { i, t ->
                             Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, fontWeight = if (tab == i) FontWeight.Bold else FontWeight.Normal) })

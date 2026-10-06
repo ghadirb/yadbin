@@ -68,7 +68,7 @@ class StudentReportViewModel(private val repo: Repository, private val id: Strin
 }
 
 @Composable
-fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onAiBuilder: () -> Unit = {}, onOpenGrowth: () -> Unit = {}) {
+fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onAiBuilder: () -> Unit = {}, onOpenGrowth: () -> Unit = {}, onOpenFullReport: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: StudentReportViewModel = viewModel(key = "student-$studentId", factory = VmFactory { StudentReportViewModel(c.repository, studentId) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -84,7 +84,7 @@ fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -
                 is Ui.Error -> ErrorBox(s.message, vm::refresh)
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
-                    ReportContent(s.data, history, profile, recs, classId != null, { r -> c.prefill = ActivityPrefill(templateId = r.templateId, gameType = r.gameType, difficultyMode = r.difficultyMode, level = r.level, skills = listOf(r.skill), studentId = studentId); onCreateActivity() }, onAiBuilder, onOpenGrowth)
+                    ReportContent(s.data, history, profile, recs, classId != null, { r -> c.prefill = ActivityPrefill(templateId = r.templateId, gameType = r.gameType, difficultyMode = r.difficultyMode, level = r.level, skills = listOf(r.skill), studentId = studentId); onCreateActivity() }, onAiBuilder, onOpenGrowth, onOpenFullReport)
                 }
             }
         }
@@ -94,7 +94,7 @@ fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -
 @Composable
 private fun ReportContent(
     r: StudentReport, history: List<HistoryItem>, profile: EducationalProfile?, recs: RecommendationsResponse?,
-    canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit, onOpenGrowth: () -> Unit,
+    canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit, onOpenGrowth: () -> Unit, onOpenFullReport: () -> Unit,
 ) {
     var editAvatar by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -102,6 +102,7 @@ private fun ReportContent(
         if (editAvatar) AvatarEditorDialog(r.student.id, r.student.name, profile?.student?.gender) { editAvatar = false }
         profile?.let { ProfileCard(it) }
         GrowthEntryCard(onOpenGrowth)
+        FullReportEntryCard(onOpenFullReport)
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
         if (r.summary.sessions > 0) {
@@ -381,6 +382,17 @@ private fun GrowthEntryCard(onOpen: () -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("روند رشد و تحلیل", style = MaterialTheme.typography.titleMedium)
             Text("تغییر عملکرد ثبت‌شدهٔ این دانش‌آموز در طول زمان، نسبت به گذشتهٔ خودش.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Entry to «گزارش جامع پرونده دانش‌آموز»: academic year / custom range, summary or full, print and save as PDF. */
+@Composable
+private fun FullReportEntryCard(onOpen: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("گزارش جامع پرونده دانش‌آموز", style = MaterialTheme.typography.titleMedium)
+            Text("گزارش سال تحصیلی یا بازهٔ دلخواه با نمودار رشد، روند مهارت‌ها و آزمون‌های درسی؛ قابل چاپ و ذخیره به‌صورت PDF.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

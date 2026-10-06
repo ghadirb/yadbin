@@ -138,6 +138,12 @@ class ApiService(private val c: ApiClient) {
         }.toString()
         return c.request("POST", "/api/students/$id/growth/summary", GrowthSummary.serializer(), body)
     }
+    // ---- comprehensive student report: small JSON header (period options) + print-ready A4 HTML (rendered by the server) ----
+    suspend fun fullReportMeta(id: String): ReportMeta = c.request("GET", "/api/students/$id/report?period=year_current&type=summary", ReportMeta.serializer())
+    suspend fun fullReportHtml(id: String, q: ReportQuery): ReportHtml {
+        val (html, name) = c.requestText("/api/students/$id/report/print?${q.queryString()}", header = "X-Report-Filename")
+        return ReportHtml(html, name?.takeIf { it.isNotBlank() } ?: "yadbin-student-report.pdf")
+    }
     suspend fun templates(): TemplatesResponse = c.request("GET", "/api/templates", TemplatesResponse.serializer())
     suspend fun aiDraft(prompt: String, classId: String?, studentId: String?): DraftResponse {
         val body = buildJsonObject {
