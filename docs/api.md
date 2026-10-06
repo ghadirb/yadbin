@@ -19,6 +19,8 @@
 | GET `/api/play/:token` | شروع/Resume؛ حداقل اطلاعات (بدون نام و شناسه‌ها) |
 | POST `/api/play/:token/complete` | `{sessionId, events[], durationMs?}` — idempotent |
 | GET `/api/reports/student/:id` | گزارش (وضعیت، روند، پیشنهاد سیستم) |
+| GET `/api/students/:id/growth` | «روند رشد و تحلیل» دانش‌آموز نسبت به گذشتهٔ خودش. پرسش‌ها: `range=7d\|30d\|3m\|6m\|all` (پیش‌فرض `30d`)، `game`، `skill`، `level`، `subject`. پاسخ: `overview`, `cognitive{timeline,skills,activities}`, `assessments`, `analysis`, `suggestion`. جزئیات: [student-growth.md](student-growth.md) |
+| POST `/api/students/:id/growth/summary` | بدنهٔ اختیاریِ همان فیلترها. متن تحلیل را (در صورت امکان) با AI روان‌تر می‌کند؛ هر خطا یا متن مشکوک → متن قاعده‌محور (`source: 'rules'`) |
 | GET `/api/reports/class/:id` | آمار کلی (بدون رتبه‌بندی) |
 | GET `/api/health` | سلامت |
 

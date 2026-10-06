@@ -13,7 +13,7 @@ export async function loadGameResults(db: D1Database, studentId: string, game: G
   ).bind(studentId, game).all<{ created_at: string; raw_result_json: string }>();
   const out: StoredResult[] = [];
   for (const r of results) {
-    try { out.push({ createdAt: r.created_at, metrics: JSON.parse(r.raw_result_json).computed }); } catch { /* skip corrupt row */ }
+    try { const computed = JSON.parse(r.raw_result_json)?.computed; if (computed) out.push({ createdAt: r.created_at, metrics: computed }); } catch { /* skip corrupt row */ }
   }
   return out;
 }

@@ -12,6 +12,7 @@ import { assessmentDraftFromSource } from './ai/assessment-from-source';
 import * as cs from './routes/content-sources';
 import { readPages, visionQuota } from './ai/source-vision';
 import * as reports from './routes/reports';
+import * as growth from './routes/growth';
 import { activityDraft } from './ai/builder';
 import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
@@ -44,6 +45,9 @@ add('POST', '/api/students', true, (req, env, _p, t) => students.createStudent(r
 add('GET', '/api/meta/education', false, () => Promise.resolve(json(catalogDto())));
 add('PUT', '/api/students/:id', true, (req, env, p, t) => students.updateStudent(req, env, t, p.id));
 add('GET', '/api/students/:id/profile', true, (_r, env, p, t) => students.getEducationalProfile(env, t, p.id));
+// Student growth («روند رشد و تحلیل»): the student compared with their own past only. Teacher + student ownership; private (never in a play link).
+add('GET', '/api/students/:id/growth', true, (req, env, p, t) => growth.getGrowth(req, env, t, p.id));
+add('POST', '/api/students/:id/growth/summary', true, (req, env, p, t) => growth.postGrowthSummary(req, env, t, p.id));
 add('GET', '/api/students/:id/recommendations', true, (_r, env, p, t) => students.getRecommendations(env, t, p.id));
 add('GET', '/api/students/:id', true, (_r, env, p, t) => students.getStudent(env, t, p.id));
 add('GET', '/api/students/:id/history', true, (_r, env, p, t) => students.getStudentHistory(env, t, p.id));
