@@ -188,6 +188,13 @@ describe('real trends from stored results', () => {
     expect(a.recent[2]).toMatchObject({ changePoints: null, averageResponseSeconds: 3 });
     expect(a.mostChanged[0].title).toBe('دوم');
   });
+  it('activities without a level never send null labels (the Android client parses levelLabel as a non-null string)', async () => {
+    const s = await setup();
+    await seedResult(s, { at: ago(5), accuracy: 0.5, level: null }); await seedResult(s, { at: ago(2), accuracy: 0.7, level: null });
+    const g = (await growth(s)).data;
+    for (const x of g.cognitive.activities.recent) { expect(x.level).toBeNull(); expect(x.levelLabel).toBe(''); expect(typeof x.title).toBe('string'); }
+    for (const l of g.filters.available.levels) expect(typeof l.label).toBe('string');
+  });
 });
 
 describe('only valid data enters growth (same rules as the Reports)', () => {

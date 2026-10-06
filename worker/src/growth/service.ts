@@ -100,7 +100,7 @@ export async function buildGrowth(db: D1Database, teacherId: string, student: { 
   const withChange = allCog.map((r) => { const p = lastBefore.get(r.game); lastBefore.set(r.game, r.accuracy); return { r, changePoints: p === undefined ? null : r1(pct(r.accuracy) - pct(p)) }; });
   const shown = withChange.filter((x) => passCog(x.r) && inWindow(x.r.at, win.from, null));
   const row = (x: (typeof shown)[number]) => ({
-    activityId: x.r.activityId, title: x.r.title, date: x.r.at, gameType: x.r.game, skill: GAME_SKILL_FA[x.r.game], level: x.r.level, levelLabel: levelLabel(x.r.level),
+    activityId: x.r.activityId, title: x.r.title, date: x.r.at, gameType: x.r.game, skill: GAME_SKILL_FA[x.r.game], level: x.r.level, levelLabel: levelLabel(x.r.level) ?? '',
     percent: pct(x.r.accuracy), answers: x.r.samples, averageResponseSeconds: x.r.avgResponseMs === null ? null : r1(x.r.avgResponseMs / 1000), difficultyReached: x.r.difficulty,
     status: 'completed', statusLabel: 'انجام‌شده', changePoints: x.changePoints,
   });
@@ -123,7 +123,7 @@ export async function buildGrowth(db: D1Database, teacherId: string, student: { 
     window: { from: win.from, to: win.to, previousFrom: win.previousFrom, previousTo: win.previousTo, bucket, timeZone: 'Asia/Tehran' },
     filters: {
       applied: { range: f.range, game: f.game ?? null, skill: f.skill ?? null, level: f.level ?? null, subject: f.subject ?? null },
-      available: { ranges: Object.entries(RANGE_LABELS_FA).map(([code, label]) => ({ code, label })), games: games.map((g) => ({ code: g, label: GAME_SKILL_FA[g] })), levels: levels.map((l) => ({ code: l, label: levelLabel(l) })), subjects },
+      available: { ranges: Object.entries(RANGE_LABELS_FA).map(([code, label]) => ({ code, label })), games: games.map((g) => ({ code: g, label: GAME_SKILL_FA[g] })), levels: levels.map((l) => ({ code: l, label: levelLabel(l) ?? l })), subjects },
     },
     overview,
     cognitive: {
