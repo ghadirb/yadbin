@@ -3,6 +3,7 @@
 package com.yadbin.teacher.ui.reports
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -67,7 +68,7 @@ class StudentReportViewModel(private val repo: Repository, private val id: Strin
 }
 
 @Composable
-fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onAiBuilder: () -> Unit = {}) {
+fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -> Unit, onCreateActivity: () -> Unit = {}, onAiBuilder: () -> Unit = {}, onOpenGrowth: () -> Unit = {}) {
     val c = LocalContainer.current
     val vm: StudentReportViewModel = viewModel(key = "student-$studentId", factory = VmFactory { StudentReportViewModel(c.repository, studentId) })
     val state by vm.state.collectAsStateWithLifecycle()
@@ -83,7 +84,7 @@ fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -
                 is Ui.Error -> ErrorBox(s.message, vm::refresh)
                 is Ui.Ready -> {
                     if (s.offline) OfflineBanner()
-                    ReportContent(s.data, history, profile, recs, classId != null, { r -> c.prefill = ActivityPrefill(templateId = r.templateId, gameType = r.gameType, difficultyMode = r.difficultyMode, level = r.level, skills = listOf(r.skill), studentId = studentId); onCreateActivity() }, onAiBuilder)
+                    ReportContent(s.data, history, profile, recs, classId != null, { r -> c.prefill = ActivityPrefill(templateId = r.templateId, gameType = r.gameType, difficultyMode = r.difficultyMode, level = r.level, skills = listOf(r.skill), studentId = studentId); onCreateActivity() }, onAiBuilder, onOpenGrowth)
                 }
             }
         }
@@ -93,13 +94,14 @@ fun StudentReportScreen(studentId: String, classId: String? = null, onBack: () -
 @Composable
 private fun ReportContent(
     r: StudentReport, history: List<HistoryItem>, profile: EducationalProfile?, recs: RecommendationsResponse?,
-    canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit,
+    canCreate: Boolean, onUseRecommendation: (Recommendation) -> Unit, onAiBuilder: () -> Unit, onOpenGrowth: () -> Unit,
 ) {
     var editAvatar by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         StudentHeader(r, profile, onAvatar = { editAvatar = true })
         if (editAvatar) AvatarEditorDialog(r.student.id, r.student.name, profile?.student?.gender) { editAvatar = false }
         profile?.let { ProfileCard(it) }
+        GrowthEntryCard(onOpenGrowth)
         Text("عملکرد مشاهده‌شده", style = MaterialTheme.typography.titleLarge)
         Text("فعالیت‌های انجام‌شده: ${r.completedActivities.fa()}", style = MaterialTheme.typography.bodyMedium)
         if (r.summary.sessions > 0) {
@@ -368,6 +370,17 @@ private fun RecentActivities(history: List<HistoryItem>) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Entry to «روند رشد و تحلیل»: this student compared with their own past (never with other students). */
+@Composable
+private fun GrowthEntryCard(onOpen: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("روند رشد و تحلیل", style = MaterialTheme.typography.titleMedium)
+            Text("تغییر عملکرد ثبت‌شدهٔ این دانش‌آموز در طول زمان، نسبت به گذشتهٔ خودش.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

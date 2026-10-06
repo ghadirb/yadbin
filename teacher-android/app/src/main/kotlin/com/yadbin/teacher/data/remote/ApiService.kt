@@ -127,6 +127,17 @@ class ApiService(private val c: ApiClient) {
     }
     suspend fun studentProfile(id: String): EducationalProfile = c.request("GET", "/api/students/$id/profile", EducationalProfile.serializer())
     suspend fun recommendations(id: String): RecommendationsResponse = c.request("GET", "/api/students/$id/recommendations", RecommendationsResponse.serializer())
+    // ---- student growth («روند رشد و تحلیل»): private, teacher-only, aggregated on the server ----
+    suspend fun studentGrowth(id: String, q: GrowthQuery): StudentGrowth = c.request("GET", "/api/students/$id/growth?${q.queryString()}", StudentGrowth.serializer())
+    suspend fun growthSummary(id: String, q: GrowthQuery): GrowthSummary {
+        val body = buildJsonObject {
+            put("range", q.range)
+            q.game?.let { put("game", it) }
+            q.level?.let { put("level", it) }
+            q.subject?.let { put("subject", it) }
+        }.toString()
+        return c.request("POST", "/api/students/$id/growth/summary", GrowthSummary.serializer(), body)
+    }
     suspend fun templates(): TemplatesResponse = c.request("GET", "/api/templates", TemplatesResponse.serializer())
     suspend fun aiDraft(prompt: String, classId: String?, studentId: String?): DraftResponse {
         val body = buildJsonObject {

@@ -24,6 +24,7 @@ import com.yadbin.teacher.ui.classes.ClassDetailScreen
 import com.yadbin.teacher.ui.classes.CreateClassScreen
 import com.yadbin.teacher.ui.common.LocalContainer
 import com.yadbin.teacher.ui.dashboard.DashboardScreen
+import com.yadbin.teacher.ui.growth.StudentGrowthScreen
 import com.yadbin.teacher.ui.reports.StudentReportScreen
 import com.yadbin.teacher.ui.subscription.SubscriptionScreen
 import com.yadbin.teacher.ui.subscription.UpgradeScreen
@@ -45,6 +46,7 @@ object Routes {
     const val NEW_ACTIVITY = "newActivity/{classId}"
     const val ACTIVITY = "activity/{id}"
     const val STUDENT = "student/{id}?classId={classId}"
+    const val STUDENT_GROWTH = "studentGrowth/{id}?classId={classId}"
     const val AI_BUILDER = "aiBuilder/{classId}?studentId={studentId}"
     const val OVERVIEW = "overview"
     const val ASSESSMENTS = "assessments"
@@ -201,6 +203,18 @@ fun AppNav() {
                 studentId = id, classId = classId, onBack = { nav.popBackStack() },
                 onCreateActivity = { if (classId != null) nav.navigate("newActivity/$classId") },
                 onAiBuilder = { if (classId != null) nav.navigate("aiBuilder/$classId?studentId=$id") },
+                onOpenGrowth = { nav.navigate("studentGrowth/$id" + (if (classId != null) "?classId=$classId" else "")) },
+            )
+        }
+        composable(
+            Routes.STUDENT_GROWTH,
+            arguments = listOf(navArgument("classId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { e ->
+            val id = e.arguments?.getString("id") ?: return@composable
+            val classId = e.arguments?.getString("classId")
+            StudentGrowthScreen(
+                studentId = id, classId = classId, onBack = { nav.popBackStack() },
+                onCreateActivity = { if (classId != null) nav.navigate("newActivity/$classId") },
             )
         }
     }
