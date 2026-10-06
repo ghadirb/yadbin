@@ -3,6 +3,7 @@ package com.yadbin.teacher.ui.auth
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -12,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +26,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yadbin.teacher.R
 import com.yadbin.teacher.core.network.ApiException
 import com.yadbin.teacher.core.network.NetworkException
 import com.yadbin.teacher.core.utils.Validators
@@ -103,9 +106,8 @@ fun SplashScreen(onNext: (loggedIn: Boolean) -> Unit) {
         onNext(c.repository.isLoggedIn)
     }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("👁️", style = MaterialTheme.typography.displayLarge)
+        Image(painterResource(R.drawable.yadbin_logo), contentDescription = "یادبین", modifier = Modifier.size(144.dp))
         Spacer(Modifier.height(8.dp))
-        Text("یادبین", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
         Text("دستیار هوشمند معلم", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(24.dp))
         CircularProgressIndicator()
@@ -119,7 +121,7 @@ private fun AuthColumn(title: String, content: @Composable ColumnScope.() -> Uni
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("یادبین", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+        Image(painterResource(R.drawable.yadbin_logo), contentDescription = "یادبین", modifier = Modifier.size(96.dp))
         Spacer(Modifier.height(4.dp))
         Text(title, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(20.dp))

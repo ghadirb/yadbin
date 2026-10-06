@@ -1,7 +1,7 @@
 // App-shell cache so a child can re-open the game offline / on a slow network. API calls are never cached.
-const CACHE = 'yadbin-shell-v2';
+const CACHE = 'yadbin-shell-v3';
 const wait = (ms) => new Promise((res) => setTimeout(() => res(null), ms));
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon.svg'])).then(() => self.skipWaiting())); });
+self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/favicon.ico'])).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);

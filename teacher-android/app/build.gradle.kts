@@ -14,7 +14,8 @@ android {
         applicationId = "com.yadbin.teacher"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
+        // Myket/Play need a strictly increasing versionCode: CI passes VERSION_CODE (= workflow run number).
+        versionCode = ((System.getenv("VERSION_CODE") ?: "").ifBlank { (project.findProperty("VERSION_CODE") as String?) ?: "1" }).toInt()
         versionName = "0.1.0"
 
         // Never hard-coded: pass -PAPI_BASE_URL=... or env API_BASE_URL. Default = local `wrangler dev` seen from the emulator.
@@ -37,9 +38,24 @@ android {
         buildConfigField("String", "IAB_KEY_MASKED", "\"$maskedKey\"")
     }
 
+    // Fixed release key (the SAME key for every build, so the app can be updated on Myket).
+    // Provided by CI from repository secrets (see .github/workflows/release-apk.yml); never committed.
+    val ksPath = System.getenv("YADBIN_KEYSTORE_PATH") ?: ""
+    signingConfigs {
+        if (ksPath.isNotBlank()) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("YADBIN_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("YADBIN_KEY_ALIAS")
+                keyPassword = System.getenv("YADBIN_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (ksPath.isNotBlank()) signingConfig = signingConfigs.getByName("release")
         }
     }
 
