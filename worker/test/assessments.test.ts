@@ -265,7 +265,14 @@ describe('Test 14-15: student report is separate and never touches the cognitive
     expect(sa.title).toBe('آزمون‌های معلم');
     expect(sa.assessments).toHaveLength(1);
     expect(sa.assessments[0]).toMatchObject({ title: 'علوم – فصل دوم', subject: 'علوم', status: 'completed', questionCount: 3, correct: 3, percent: 100, minutes: 14 });
-    expect((await t.api('GET', `/api/students/${sid}/profile`, undefined, token)).data).toEqual(profileBefore);
+    // The profile now also carries the teacher-exam summary (shown under the student's name), but the cognitive part never changes.
+    const profileAfter = (await t.api('GET', `/api/students/${sid}/profile`, undefined, token)).data;
+    const { assessments: asBefore, summary: sumBefore, ...restBefore } = profileBefore;
+    const { assessments: asAfter, summary: sumAfter, ...restAfter } = profileAfter;
+    expect(restAfter).toEqual(restBefore);
+    expect(asBefore.count).toBe(0);
+    expect(asAfter).toMatchObject({ count: 1, average: 100, last: 100 });
+    expect(sumAfter.assessmentsBasedOn).toBe(1);
     expect((await t.api('GET', `/api/reports/student/${sid}`, undefined, token)).data).toEqual(reportBefore);
     expect((await t.db.prepare('SELECT * FROM student_metrics WHERE student_id = ? ORDER BY game_type').bind(sid).all()).results).toEqual(metricsBefore.results);
     expect(await count('SELECT COUNT(*) AS n FROM game_results')).toBe(resultsBefore);
