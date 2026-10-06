@@ -20,7 +20,8 @@ class AccountDeletionTest {
 
     private class Env(val server: MockWebServer, val tokens: MemoryTokenStore, val cache: MemoryCacheStore, val repo: Repository, val unauthorized: IntArray)
 
-    private fun env(): Env {
+    // suspend: CacheStore.put is a suspend function (called from runTest)
+    private suspend fun env(): Env {
         val server = MockWebServer().also { it.start() }
         val tokens = MemoryTokenStore().also { it.save("jwt", "معلم") }
         val cache = MemoryCacheStore().also { it.put("classes", "{}") }
