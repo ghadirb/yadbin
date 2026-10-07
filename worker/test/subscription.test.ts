@@ -270,6 +270,7 @@ describe('Myket in-app purchase (consumable product = one period)', () => {
   beforeAll(async () => {
     keys = await keyPair();
     await t.db.prepare("UPDATE plans SET store_sku = ? WHERE id = 'pro_monthly'").bind(SKU).run();
+    await t.db.prepare("UPDATE plans SET store_sku = NULL WHERE id = 'pro_yearly'").run(); // migration 0013 seeds both SKUs; this suite needs one plan without a product
     env = { DB: t.db, ENVIRONMENT: 'production', PAYMENT_PROVIDER: 'myket', MYKET_PUBLIC_KEY: keys.publicKey, MYKET_ACCESS_TOKEN: 'tok-secret', MYKET_PACKAGE_NAME: PKG, PLAY_BASE_URL: 'https://x.example' };
   });
 

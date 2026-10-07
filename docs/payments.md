@@ -51,11 +51,7 @@ App/Gateway → callback یا /myket/confirm → PaymentProvider.verifyPayment()
 2. **کلید عمومی** برنامه را از پنل بگیرید (آیکن کلید روی کارت برنامه).
 3. دو محصول **مصرف‌شدنی** بسازید (ماهانه / سالانه) و قیمت را همان‌جا تعیین کنید. برای تست قیمت خیلی کم (مثلاً ۱۰۰ ریال) بگذارید.
 4. در بخش «محصولات درون‌برنامه‌ای» **X-Access-Token** را بگیرید.
-5. شناسه‌ی محصول‌ها را در D1 ثبت کنید:
-   ```sql
-   UPDATE plans SET store_sku = '<شناسه ماهانه>' WHERE id = 'pro_monthly';
-   UPDATE plans SET store_sku = '<شناسه سالانه>'  WHERE id = 'pro_yearly';
-   ```
+5. شناسه‌ی محصول‌ها (`pro_monthly` و `pro_yearly`) با migration شمارهٔ `0013_myket_skus.sql` هنگام دیپلوی در D1 ثبت می‌شوند (فقط اگر `store_sku` هنوز خالی باشد). برای تغییر بعدی، دستور `UPDATE plans SET store_sku = '<شناسه>' WHERE id = '<planId>';` را روی D1 بزنید.
 6. در GitHub: secret `MYKET_ACCESS_TOKEN` و variable `MYKET_PUBLIC_KEY` را بسازید و workflow دیپلوی را اجرا کنید. (توکن را هرگز داخل اپ یا ریپو نگذارید؛ مایکت صراحتاً می‌گوید فقط Server-to-Server.)
 7. در ساخت APK: `-PMYKET_PUBLIC_KEY=...` (برای کلید داخل اپ؛ نگاه کنید به `docs/android.md`).
 
