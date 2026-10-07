@@ -1,5 +1,8 @@
 package com.yadbin.teacher.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,7 +90,11 @@ fun AppNav() {
         )
     }
 
-    NavHost(navController = nav, startDestination = Routes.SPLASH) {
+    NavHost(
+        navController = nav, startDestination = Routes.SPLASH,
+        enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(160)) },
+        popEnterTransition = { fadeIn(tween(220)) }, popExitTransition = { fadeOut(tween(160)) },
+    ) {
         composable(Routes.SPLASH) {
             SplashScreen { loggedIn ->
                 nav.navigate(if (loggedIn) Routes.DASHBOARD else Routes.LOGIN) { popUpTo(Routes.SPLASH) { inclusive = true } }

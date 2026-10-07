@@ -16,6 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -557,6 +563,8 @@ private fun GrowthLineChart(values: List<Double>, selected: Int?, onSelect: ((In
     val mark = MaterialTheme.colorScheme.tertiary
     val padPx = with(LocalDensity.current) { 12.dp.toPx() }
     val onSel by rememberUpdatedState(onSelect)
+    val reveal = remember(values) { Animatable(0f) }
+    LaunchedEffect(values) { reveal.animateTo(1f, tween(600)) }
     Canvas(
         modifier.fillMaxWidth().height(height).pointerInput(values.size) {
             detectTapGestures { off ->
@@ -574,7 +582,14 @@ private fun GrowthLineChart(values: List<Double>, selected: Int?, onSelect: ((In
         for (g in listOf(0.0, 50.0, 100.0)) drawLine(grid, Offset(padPx, py(g)), Offset(w - padPx, py(g)), strokeWidth = 1f)
         val path = Path()
         values.forEachIndexed { i, v -> if (i == 0) path.moveTo(px(i), py(v)) else path.lineTo(px(i), py(v)) }
-        drawPath(path, line, style = Stroke(width = 4f))
+        val fill = Path().apply {
+            addPath(path)
+            lineTo(px(values.size - 1), h - padPx)
+            lineTo(px(0), h - padPx)
+            close()
+        }
+        drawPath(fill, Brush.verticalGradient(listOf(line.copy(alpha = 0.22f * reveal.value), Color.Transparent), startY = padPx, endY = h - padPx))
+        drawPath(path, line.copy(alpha = reveal.value), style = Stroke(width = 5f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         values.forEachIndexed { i, v ->
             val on = i == selected
             if (on) drawLine(mark, Offset(px(i), padPx), Offset(px(i), h - padPx), strokeWidth = 2f)
