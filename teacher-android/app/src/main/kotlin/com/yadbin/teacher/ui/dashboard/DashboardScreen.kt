@@ -57,11 +57,17 @@ class DashboardViewModel(private val repo: Repository, private val purchases: Pu
             _state.value = loadUi { if (archived) repo.archivedClasses() else repo.classes() }
             if (!archived) {
                 try { _totals.value = repo.dashboard().data.totals } catch (e: ApiException) { } catch (e: NetworkException) { }
-                // Myket docs: look for paid-but-undelivered purchases at start. Safe to repeat (the server is idempotent).
-                try { purchases?.recover() } catch (e: Exception) { }
-                try { _sub.value = repo.subscription().data.subscription } catch (e: ApiException) { } catch (e: NetworkException) { }
+                // The plan is loaded FIRST and on its own: billing recovery talks to the Myket app and may hang or fail, and it must never hide the plan card.
+                loadSubscription()
+                // Myket docs: look for paid-but-undelivered purchases at start. Safe to repeat (the server is idempotent). Time-boxed.
+                val delivered = try { kotlinx.coroutines.withTimeoutOrNull(15_000) { purchases?.recover() } ?: 0 } catch (e: Exception) { 0 }
+                if (delivered > 0) loadSubscription()
             }
         }
+    }
+
+    private suspend fun loadSubscription() {
+        try { _sub.value = repo.subscription().data.subscription } catch (e: Exception) { /* keep the last known value; the card falls back to a plain «اشتراک من» entry */ }
     }
 
     fun logout(onDone: () -> Unit) { viewModelScope.launch { repo.logout(); onDone() } }
@@ -93,6 +99,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "منو") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("اشتراک من") }, onClick = { menu = false; onSubscription() })
                         DropdownMenuItem(text = { Text("حساب، پشتیبانی و حریم خصوصی") }, onClick = { menu = false; onAccount() })
                         DropdownMenuItem(text = { Text("خروج") }, onClick = { menu = false; vm.logout(onLoggedOut) })
                     }
@@ -115,6 +122,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                 AssistChip(onClick = onAssessments, label = { Text("آزمون‌های من") })
                 AssistChip(onClick = onSources, label = { Text("کتاب‌ها و منابع") })
                 AssistChip(onClick = onOverview, label = { Text("نمای کلی") })
+                AssistChip(onClick = onSubscription, label = { Text("اشتراک من") })
             }
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = !archivedTab, onClick = { archivedTab = false; vm.showArchived(false) }, label = { Text("کلاس‌های فعال") })
@@ -133,7 +141,7 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
                         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (!archivedTab) {
                                 item { GreetingHeader(teacherName, totals) }
-                                sub?.let { e -> item { SubscriptionCard(e, onSubscription) } }
+                                item { sub?.let { e -> SubscriptionCard(e, onSubscription) } ?: SubscriptionFallbackCard(onSubscription) }
                                 item { SummaryRow(s.data.classes, totals) }
                                 item { SectionTitle("کلاس‌های من") }
                             }
@@ -168,6 +176,17 @@ private fun SubscriptionCard(e: SubEntitlements, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(SubscriptionText.banner(e), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("اشتراک من", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** Shown while the plan could not be loaded (offline / server error) so the way into «اشتراک من» never disappears. */
+@Composable
+private fun SubscriptionFallbackCard(onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("وضعیت اشتراک شما را در این بخش ببینید.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text("اشتراک من", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
