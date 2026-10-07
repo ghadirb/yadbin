@@ -3,11 +3,14 @@
 package com.yadbin.teacher.ui.dashboard
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -84,13 +87,11 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
 
     Scaffold(
         topBar = {
+            // Only the overflow menu lives in the bar: four text buttons did not fit on narrow phones and "بیشتر" was pushed off-screen.
             YadbinTopBar("داشبورد", actions = {
-                TextButton(onClick = onAssessments) { Text("آزمون‌های من") }
-                TextButton(onClick = onSources) { Text("کتاب‌ها و منابع") }
-                TextButton(onClick = onOverview) { Text("نمای کلی") }
                 var menu by remember { mutableStateOf(false) }
                 Box {
-                    TextButton(onClick = { menu = true }) { Text("بیشتر") }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "منو") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("حساب، پشتیبانی و حریم خصوصی") }, onClick = { menu = false; onAccount() })
                         DropdownMenuItem(text = { Text("خروج") }, onClick = { menu = false; vm.logout(onLoggedOut) })
@@ -106,6 +107,15 @@ fun DashboardScreen(onOpenClass: (String) -> Unit, onCreateClass: () -> Unit, on
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            // The main places of the app, always visible and scrollable sideways on small screens.
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AssistChip(onClick = onAssessments, label = { Text("آزمون‌های من") })
+                AssistChip(onClick = onSources, label = { Text("کتاب‌ها و منابع") })
+                AssistChip(onClick = onOverview, label = { Text("نمای کلی") })
+            }
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = !archivedTab, onClick = { archivedTab = false; vm.showArchived(false) }, label = { Text("کلاس‌های فعال") })
                 FilterChip(selected = archivedTab, onClick = { archivedTab = true; vm.showArchived(true) }, label = { Text("آرشیو") })
