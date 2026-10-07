@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -144,14 +145,21 @@ fun ClassDetailScreen(
         onDispose { lifecycle.removeObserver(obs) }
     }
 
-    val title = (detail as? Ui.Ready)?.data?.cls?.name ?: "کلاس"
+    // The class name is shown large right below the bar, so the bar itself stays short and the three actions live in one overflow menu
+    // (three text buttons used to squeeze the title into two broken lines on narrow phones).
     Scaffold(
         topBar = {
-            YadbinTopBar(title, onBack, actions = {
+            YadbinTopBar("کلاس", onBack, actions = {
                 val isArchived = (detail as? Ui.Ready)?.data?.cls?.archived == true
-                TextButton(onClick = { if (isArchived) vm.archive(false) else vm.archive(true, onBack) }) { Text(if (isArchived) "بازگردانی" else "آرشیو") }
-                TextButton(onClick = { showEditClass = true }) { Text("ویرایش") }
-                TextButton(onClick = { showDeleteClass = true }) { Text("حذف کلاس") }
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(androidx.compose.material.icons.Icons.Default.MoreVert, contentDescription = "گزینه‌های کلاس") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(if (isArchived) "بازگردانی" else "آرشیو") }, onClick = { menu = false; if (isArchived) vm.archive(false) else vm.archive(true, onBack) })
+                        DropdownMenuItem(text = { Text("ویرایش") }, onClick = { menu = false; showEditClass = true })
+                        DropdownMenuItem(text = { Text("حذف کلاس", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; showDeleteClass = true })
+                    }
+                }
             })
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -174,9 +182,9 @@ fun ClassDetailScreen(
                         }
                     }
                     TabRow(selectedTabIndex = tab, containerColor = Color.Transparent) {
-                        Tab(tab == 0, { tab = 0 }, text = { Text("دانش‌آموزان", fontWeight = if (tab == 0) FontWeight.Bold else FontWeight.Normal) })
-                        Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها", fontWeight = if (tab == 1) FontWeight.Bold else FontWeight.Normal) })
-                        Tab(tab == 2, { tab = 2 }, text = { Text("گزارش", fontWeight = if (tab == 2) FontWeight.Bold else FontWeight.Normal) })
+                        Tab(tab == 0, { tab = 0 }, text = { Text("دانش‌آموزان", maxLines = 1, softWrap = false, fontSize = 13.sp, fontWeight = if (tab == 0) FontWeight.Bold else FontWeight.Normal) })
+                        Tab(tab == 1, { tab = 1 }, text = { Text("فعالیت‌ها", maxLines = 1, softWrap = false, fontSize = 13.sp, fontWeight = if (tab == 1) FontWeight.Bold else FontWeight.Normal) })
+                        Tab(tab == 2, { tab = 2 }, text = { Text("گزارش", maxLines = 1, softWrap = false, fontSize = 13.sp, fontWeight = if (tab == 2) FontWeight.Bold else FontWeight.Normal) })
                     }
                     // Spec §23: one subtle, short animation when the tab changes (no continuous animation).
                     Crossfade(targetState = tab, animationSpec = tween(180), label = "class-tab") { t ->
