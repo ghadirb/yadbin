@@ -6,12 +6,16 @@ import { runSession } from './session/controller';
 import { openStore } from './storage/kv';
 import { createApi } from './sync/api';
 import { createAssessmentUi } from './assessment/screens';
+import { bootKids, kidsRoute } from './kids/main';
 
 declare global { interface Window { __yadbinReady?: boolean } }
 
 async function boot() {
   window.__yadbinReady = true;
   const root = document.getElementById('app')!;
+  const kids = kidsRoute(location.pathname);
+  if (kids) return bootKids(root, kids); // Yadbin Kids lives under /kids/*; the Teacher play flow below is untouched
+  if (location.pathname.startsWith('/kids')) { root.textContent = 'این لینک معتبر نیست.'; return; }
   const previewMatch = /^\/preview\/([^/]+)$/.exec(location.pathname);
   const token = previewMatch?.[1] ?? tokenFromPath(location.pathname);
   if (previewMatch) root.before(previewBanner());

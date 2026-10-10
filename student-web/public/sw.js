@@ -1,5 +1,5 @@
 // App-shell cache so a child can re-open the game offline / on a slow network. API calls are never cached.
-const CACHE = 'yadbin-shell-v4';
+const CACHE = 'yadbin-shell-v5';
 const wait = (ms) => new Promise((res) => setTimeout(() => res(null), ms));
 // Static legal/support pages are plain network pages: they must never replace the cached game shell ('/') nor be served from it.
 const LEGAL = /^\/(privacy|terms|support)(\.html)?\/?$|^\/legal\.css$/;
