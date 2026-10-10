@@ -19,14 +19,15 @@ import { dashboard } from './routes/dashboard';
 import { catalogDto } from './education/catalog';
 import * as sub from './routes/subscription';
 import * as account from './routes/account';
+import * as kids from './routes/kids';
 import { corsHeaders, HttpError, json } from './utils/http';
 
 type P = Record<string, string>;
-interface Route { method: string; segs: string[]; teacher: boolean; handler: (req: Request, env: Env, p: P, teacherId: string) => Promise<Response> }
+interface Route { method: string; segs: string[]; teacher: boolean; kidsParent?: boolean; handler: (req: Request, env: Env, p: P, teacherId: string) => Promise<Response> }
 
 const routes: Route[] = [];
-function add(method: string, path: string, teacher: boolean, handler: Route['handler']) {
-  routes.push({ method, segs: path.split('/').filter(Boolean), teacher, handler });
+function add(method: string, path: string, teacher: boolean, handler: Route['handler'], kidsParent = false) {
+  routes.push({ method, segs: path.split('/').filter(Boolean), teacher, kidsParent, handler });
 }
 
 add('POST', '/api/auth/register', false, (req, env) => auth.register(req, env));
@@ -132,6 +133,25 @@ add('GET', '/api/payment/status', true, (req, env, _p, t) => sub.getPaymentStatu
 add('POST', '/api/payment/callback', false, (req, env) => sub.paymentCallback(req, env));
 add('GET', '/api/payment/callback', false, (req, env) => sub.paymentCallback(req, env));
 
+// Yadbin Kids (additive namespace /api/kids/*). Parent routes: parent JWT (own key). Child routes: opaque device token (Bearer kc_…), no login.
+add('POST', '/api/kids/parent/register', false, (req, env) => kids.parentRegister(req, env));
+add('POST', '/api/kids/parent/login', false, (req, env) => kids.parentLogin(req, env));
+add('POST', '/api/kids/parent/reset-password', false, (req, env) => kids.parentResetPassword(req, env));
+add('POST', '/api/kids/parent/delete-account', false, (req, env, _p, pid) => kids.parentDeleteAccount(req, env, pid), true);
+add('GET', '/api/kids/parent', false, (_r, env, _p, pid) => kids.parentHome(env, pid), true);
+add('POST', '/api/kids/parent/children', false, (req, env, _p, pid) => kids.createChild(req, env, pid), true);
+add('PUT', '/api/kids/parent/children/:id', false, (req, env, p, pid) => kids.updateChild(req, env, pid, p.id), true);
+add('DELETE', '/api/kids/parent/children/:id', false, (_r, env, p, pid) => kids.deleteChild(env, pid, p.id), true);
+add('POST', '/api/kids/parent/children/:id/link', false, (_r, env, p, pid) => kids.rotateChildLink(env, pid, p.id), true);
+add('GET', '/api/kids/parent/children/:id/dashboard', false, (_r, env, p, pid) => kids.parentDashboard(env, pid, p.id), true);
+add('GET', '/api/kids/parent/children/:id/report', false, (req, env, p, pid) => kids.parentReport(req, env, pid, p.id), true);
+add('GET', '/api/kids/report', false, (req, env, _p, pid) => kids.parentReportQuery(req, env, pid), true);
+add('GET', '/api/kids/profile', false, (req, env) => kids.childProfile(req, env));
+add('GET', '/api/kids/journey', false, (req, env) => kids.childJourney(req, env));
+add('POST', '/api/kids/session/start', false, (req, env) => kids.childSessionStart(req, env));
+add('POST', '/api/kids/session/result', false, (req, env) => kids.childSessionResult(req, env));
+add('GET', '/api/kids/progress', false, (req, env) => kids.childProgress(req, env));
+
 add('GET', '/api/reports/student/:id', true, (_r, env, p, t) => reports.studentReport(env, t, p.id));
 add('GET', '/api/reports/class/:id', true, (_r, env, p, t) => reports.classReport(env, t, p.id));
 
@@ -160,7 +180,8 @@ export default {
       for (const r of routes) {
         const p = match(r, req.method, segs);
         if (!p) { if (r.segs.length === segs.length && r.segs.every((s, i) => s.startsWith(':') || s === segs[i])) pathMatched = true; continue; }
-        const teacherId = r.teacher ? await requireTeacher(req, env) : '';
+        // Yadbin Kids parents use their own token (different signing key); `teacherId` carries the PARENT id for those routes.
+        const teacherId = r.kidsParent ? await kids.requireParent(req, env) : r.teacher ? await requireTeacher(req, env) : '';
         return withCors(await r.handler(req, env, p, teacherId), cors);
       }
       if (pathMatched) throw new HttpError(405, 'method_not_allowed', 'روش درخواست مجاز نیست.');
