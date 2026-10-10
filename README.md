@@ -68,3 +68,6 @@ gradle testDebugUnitTest                                              # تست�
 
 بدون `API_BASE_URL` آدرس پیش‌فرض `http://10.0.2.2:8787` است (Worker محلی از دید شبیه‌ساز).
 بیلد و تست در CI (job با نام `android`) اجرا می‌شود و APK دیباگ به‌صورت artifact ذخیره می‌شود.
+
+## یادبین کودک (Yadbin Kids)
+بازی‌های کوتاه برای کودکان ۴ تا ۱۲ سال + داشبورد رشد والدین، offline-first، روی همین Worker. جزئیات: [`docs/kids/`](docs/kids/README.md).
