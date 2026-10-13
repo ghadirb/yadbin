@@ -65,6 +65,7 @@ jobs:
           name: yadbin-teacher-release-apk
           path: dist/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Publish GitHub Release (fixed link, latest build)
         env:
