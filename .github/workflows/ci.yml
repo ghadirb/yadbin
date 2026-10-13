@@ -83,6 +83,7 @@ jobs:
           name: yadbin-teacher-debug-apk
           path: teacher-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+          retention-days: 1
 
   e2e:
     # Acceptance scenario (spec §44) in a real Chromium: local wrangler dev = Worker + built Student Web + local D1.
