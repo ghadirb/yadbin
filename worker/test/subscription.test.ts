@@ -14,8 +14,8 @@ beforeAll(async () => {
   t = await createEnv();
   m = await createEnv({ PAYMENT_PROVIDER: 'mock', PAYMENT_MOCK_ENABLED: 'true' });
   await m.db.prepare("UPDATE plans SET price_amount = 500000 WHERE id = 'pro_monthly'").run(); // only the Mock env has a (test) price
-});
-afterAll(async () => { await t.dispose(); await m.dispose(); });
+}, 90_000); // two Worker+D1 environments: the default 10 s hook limit is too tight when the whole suite runs in parallel
+afterAll(async () => { await t?.dispose(); await m?.dispose(); });
 
 async function expireTrial(e: TestEnv, id: string) { await e.db.prepare('UPDATE teachers SET trial_expires_at = ? WHERE id = ?').bind(past(), id).run(); }
 const sub = async (e: TestEnv, token: string) => (await e.api('GET', '/api/subscription', undefined, token)).data.subscription;

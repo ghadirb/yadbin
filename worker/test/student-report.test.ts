@@ -73,8 +73,8 @@ describe('GET /students/:id/report — access control', () => {
 describe('report content', () => {
   it('builds the structured report for the current academic year (identity, period, overview, skills, activities, metadata)', async () => {
     const s = await setup('علی رضایی');
-    for (const [d, acc] of [[6, 0.5], [4, 0.6], [2, 0.8]] as const) await seedResult(s, { at: ago(d), accuracy: acc, game: 'memory' });
-    await seedResult(s, { at: ago(3), accuracy: 0.7, game: 'attention' });
+    for (const [d, acc] of [[13, 0.5], [9, 0.6], [2, 0.8]] as const) await seedResult(s, { at: ago(d), accuracy: acc, game: 'memory' }); // spread over >1 week: past day 31 of the academic year the timeline uses weekly buckets and needs >= 2
+    await seedResult(s, { at: ago(5), accuracy: 0.7, game: 'attention' });
     const r = (await report(s)).data;
     expect(r.student).toMatchObject({ id: s.studentId, name: 'علی رضایی', className: 'کلاس پنجم', academicYear: '۱۴۰۵–۱۴۰۶' });
     expect(r.student.gradeLabel).toBeTruthy();
@@ -197,19 +197,24 @@ describe('summary vs full, pagination and volume', () => {
   });
   it('a year with ~600 results is aggregated on the server within a sane time and size', async () => {
     const s = await setup();
-    const stmts: D1PreparedStatement[] = [];
     const start = Date.parse('2026-09-24T08:00:00Z');
+    // Seed with 4 set-based INSERTs (json_each) instead of 2400 single-row statements: same data, but fast even on slow Windows/CI disks.
+    const rows: { act: string; ast: string; ses: string; tk: string; at: string; acc: number; title: string }[] = [];
     for (let i = 0; i < 600; i++) {
-      const at = new Date(start + (i % 12) * DAY * 0 + (i % 13) * 60_000).toISOString(); // all inside the current academic year
-      const act = uid('a'), ast = uid('s'), ses = uid('g');
-      stmts.push(
-        t.db.prepare(`INSERT INTO activities (id, teacher_id, class_id, game_type, difficulty_mode, question_count, status, created_at, publish_state, title, activity_level) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).bind(act, s.teacher.id, s.classId, 'memory', 'medium', 10, 'active', at, 'published', `ف${i}`, 'basic'),
-        t.db.prepare(`INSERT INTO activity_students (id, activity_id, student_id, token, status, started_at, completed_at) VALUES (?,?,?,?,?,?,?)`).bind(ast, act, s.studentId, uid('tk'), 'completed', at, at),
-        t.db.prepare(`INSERT INTO game_sessions (id, activity_student_id, game_type, started_at, completed_at, status) VALUES (?,?,?,?,?,?)`).bind(ses, ast, 'memory', at, at, 'completed'),
-        t.db.prepare(`INSERT INTO game_results (session_id, accuracy, average_response_time, difficulty_reached, hints_used, sample_count, raw_result_json, created_at) VALUES (?,?,?,?,?,?,?,?)`).bind(ses, 0.5 + (i % 50) / 100, 1500, 2, 0, 10, '{"computed":{"details":{}}}', at),
-      );
+      const at = new Date(start + (i % 13) * 60_000).toISOString(); // all inside the current academic year
+      rows.push({ act: uid('a'), ast: uid('s'), ses: uid('g'), tk: uid('tk'), at, acc: 0.5 + (i % 50) / 100, title: `\u0641${i}` });
     }
-    for (let i = 0; i < stmts.length; i += 100) await t.db.batch(stmts.slice(i, i + 100));
+    const js = JSON.stringify(rows);
+    await t.db.batch([
+      t.db.prepare(`INSERT INTO activities (id, teacher_id, class_id, game_type, difficulty_mode, question_count, status, created_at, publish_state, title, activity_level)
+        SELECT json_extract(value,'$.act'), ?2, ?3, 'memory', 'medium', 10, 'active', json_extract(value,'$.at'), 'published', json_extract(value,'$.title'), 'basic' FROM json_each(?1)`).bind(js, s.teacher.id, s.classId),
+      t.db.prepare(`INSERT INTO activity_students (id, activity_id, student_id, token, status, started_at, completed_at)
+        SELECT json_extract(value,'$.ast'), json_extract(value,'$.act'), ?2, json_extract(value,'$.tk'), 'completed', json_extract(value,'$.at'), json_extract(value,'$.at') FROM json_each(?1)`).bind(js, s.studentId),
+      t.db.prepare(`INSERT INTO game_sessions (id, activity_student_id, game_type, started_at, completed_at, status)
+        SELECT json_extract(value,'$.ses'), json_extract(value,'$.ast'), 'memory', json_extract(value,'$.at'), json_extract(value,'$.at'), 'completed' FROM json_each(?1)`).bind(js),
+      t.db.prepare(`INSERT INTO game_results (session_id, accuracy, average_response_time, difficulty_reached, hints_used, sample_count, raw_result_json, created_at)
+        SELECT json_extract(value,'$.ses'), json_extract(value,'$.acc'), 1500, 2, 0, 10, '{"computed":{"details":{}}}', json_extract(value,'$.at') FROM json_each(?1)`).bind(js),
+    ]);
     const t0 = Date.now();
     const res = await t.raw('GET', `/api/students/${s.studentId}/report?pageSize=20`, { Authorization: `Bearer ${s.token}` });
     const body = await res.text();
